@@ -21,127 +21,97 @@
 
 ---
 
-> 🏁 Every decision gets debated after it ships. Agora lets you watch the debate before —
-> then hands you the keys, drops the lights, and runs it at full throttle.
+> 🏁 **Paste a decision. Watch who it hurts — before it ships.**
 
-Paste a decision. Agora ingests **real posts from Reddit(-style), Hacker News, Bluesky,
-Mastodon (+ X via import)**, distills them into stakeholder cohorts, grows a
-**1,800-persona social graph**, and runs a **durable multi-round simulation** where
-opinions spread by bounded-confidence influence. Factions emerge. A Dissent Agent names
-who gets quietly hurt. Fork the timeline mid-run with an amendment and watch two futures
-diverge — all streaming live to every open browser via Convex reactive queries.
+Agora pulls **real posts** (Reddit·HN·Bluesky·Mastodon, +X import), distills them into
+stakeholder **cohorts**, grows an **1,800-persona graph**, and runs a **durable
+simulation** where opinions spread by bounded-confidence influence. Factions emerge, a
+Dissent Agent names the quietly-hurt, and you can **fork the timeline mid-run** — all
+streaming live to every open browser via Convex reactive queries. Wrapped in an F1
+**pit-wall skin**: crank the engine, lights out, run the lap.
 
-It wears a **pit-wall skin**: you crank the engine, the lights go out, 1,800 nodes light
-up on the grid, and every screen mirrors the same lap in real time.
-
-## Grand-prix weekend, one lap
-
-| Stop | Where | What happens |
-|---|---|---|
-| **Ignition** | `Start the engine` | ~10s engine-start film — systems check (corpus / cohorts / grid / graph / engine / voices / live), ignition line, rumble, rosso wipe → hands off to the pit wall |
-| **Pit wall** | landing view after ignition | live telemetry + the garage (pick a decision), every screen in sync |
-| **Harness** | `②③` console | the 7-layer pipeline, each layer lighting up as it runs |
-| **War room** | `Enter war room` → `Run` | lights-out start, LAP counter, 1,800 nodes polarize, factions crystallize |
-| **Settings** | `⚙` | BYOK keys, rounds, tick speed, model council |
-
-Nav strip (inner pages): **Home · Pit wall · Harness · War room · Settings**. The landing
-stays cinema-clean; the strip only appears once you're inside.
-
-## Run it
+## ⚡ Run it
 
 ```sh
 npm install
-CONVEX_AGENT_MODE=anonymous npx convex dev   # local backend, no account needed
-npx vite --port 8642                          # in a second terminal
-# open http://localhost:8642
+CONVEX_AGENT_MODE=anonymous npx convex dev   # local backend, no account
+npx vite --port 8642                          # second terminal → localhost:8642
 ```
 
-Optional (real LLM voices — Gemini): `npx convex env set GEMINI_API_KEY <key>`.
-Without a key every Gemini call falls back to deterministic content sourced from the
-real corpus — nothing blocks. Reduced-motion users get an instant cut instead of the film.
+Optional real LLM voices: `npx convex env set GEMINI_API_KEY <key>`. No key → deterministic
+fallback from the real corpus, nothing blocks.
 
-**Deep corpus pull (Go sidecar):** `cd scraper && go run . -q "your query" -pages 4`
-— scrapes HN/Bluesky/Mastodon/Lemmy concurrently with pagination, dedupes, and
-bulk-inserts through Convex's HTTP API (~550 posts in ~5 s); the harness console
-fills live while it runs. The simulation workflow itself stays inside Convex on
-purpose: durability comes from Convex owning workflow state — an external runner
-is exactly the process that dies.
+## 🏎️ The pipeline — 7 layers, all live
 
-**Model-accuracy harness:** `npx convex run selftest:run` — proves engine
-invariants on demand (same-seed determinism, stance bounds, tally conservation,
-roundStats integrity, drift sanity) and cleans up after itself.
+```mermaid
+%%{init:{'theme':'base','themeVariables':{'primaryColor':'#2a0000','primaryBorderColor':'#DC0000','primaryTextColor':'#fff','lineColor':'#DC0000','fontFamily':'monospace'}}}%%
+flowchart LR
+  subgraph SRC[" real world "]
+    R[Reddit→Lemmy]:::s
+    H[Hacker News]:::s
+    B[Bluesky]:::s
+    M[Mastodon]:::s
+  end
+  R & H & B & M --> L0
+  L0[L0 · INGEST<br/>fetch + dedupe]:::l --> L1[L1 · DISTILL<br/>6–8 cohorts]:::l
+  L1 --> L2[L2 · POPULATE<br/>1,800 personas]:::l
+  L2 --> L3[L3 · GRAPH<br/>homophily net]:::l
+  L3 --> L4[L4 · SIMULATE<br/>12 durable rounds]:::w
+  L4 --> L5[L5 · VOICES<br/>quotes · dissent]:::l
+  L5 --> L6[L6 · SERVE<br/>reactive queries]:::l
+  L6 --> UI[[every browser<br/>in sync]]:::u
+  classDef s fill:#1a0000,stroke:#8B0000,color:#ff6b6b;
+  classDef l fill:#2a0000,stroke:#DC0000,color:#fff;
+  classDef w fill:#DC0000,stroke:#fff,color:#fff;
+  classDef u fill:#440000,stroke:#DC0000,color:#fff;
+```
 
-**Corpus cache (Ruby):** `ruby cache/corpus_cache.rb pull|replay|list|stats|clean -q "…"`
-— snapshots Go-scraper pulls to disk and replays them into Convex with zero network
-(offline-demo insurance + instant refills). All ingest paths share one server-side
-gate: content-hash dedupe + ≥5-word quality filter, so re-runs never store garbage.
+`L4` is a **Convex Workflow** — kill `convex dev` mid-run, restart, it resumes where it
+died. `L5` runs on a **Workpool** (4-parallel) + **Rate Limiter** (8/min). `L6` is plain
+reactive queries — **zero websocket code of ours**. Stance math is deterministic and
+seeded; LLMs voice the debate, they never move the numbers.
 
-**Local LLM:** `npx convex env set LOCAL_LLM_URL http://127.0.0.1:11434` (Ollama) and
-optionally `LOCAL_LLM_MODEL llama3.2` — the voices/distill chain tries local → Gemini
-→ deterministic fallback. The dashboard's LLM-tier tile shows which is live.
+## 🏁 One lap
 
-**Settings (⚙ on the pit wall):** BYOK Gemini key · local model (Ollama URL+name) ·
-Hugging Face token+model (router.huggingface.co) · rounds (6–20) · tick speed ·
-model council toggle. Keys stay in the local Convex DB.
+```mermaid
+%%{init:{'theme':'base','themeVariables':{'primaryColor':'#2a0000','primaryBorderColor':'#DC0000','primaryTextColor':'#fff','lineColor':'#DC0000','fontFamily':'monospace'}}}%%
+flowchart TD
+  I([🔴 Start the engine]):::go --> F[~10s ignition film<br/>systems check · rosso wipe]:::n
+  F --> P[Pit wall<br/>telemetry + garage]:::n
+  P --> HN[Harness console<br/>fetch · distill · build net]:::n
+  HN --> W{War room · Run}:::hot
+  W --> POL[1,800 nodes polarize<br/>Dissent Agent fires @3/7]:::n
+  POL --> FORK[⚡ Intervene → timelines fork]:::n
+  FORK --> V([Verdict · approval% · risk<br/>amendments ranked by flips]):::go
+  classDef go fill:#DC0000,stroke:#fff,color:#fff;
+  classDef hot fill:#8B0000,stroke:#DC0000,color:#fff;
+  classDef n fill:#2a0000,stroke:#DC0000,color:#fff;
+```
 
-**Model council:** at verdict time every configured model predicts the final
-approval% blind from the round-0 cohort brief; the engine's outcome is ground
-truth and each model gets an accuracy score (100 − |error|), plus a consensus.
+Copy the URL (`#run=<id>`) into another browser/device → identical live state, no refresh.
+That's the whole pitch in one gesture.
 
-**Reddit chain:** reddit.json → PullPush (free Pushshift successor, real Reddit
-comments when up) → Lemmy — posts always labeled by their true origin.
+## 🔧 Extras
 
-**Workspace hygiene:** `npx convex run ops:cleanup` (or the dashboard's Clean
-workspace button) — keeps the latest baseline per decision + its forks, cascade-deletes
-everything else in batches, sweeps orphans/duplicates/failed sources.
+| Command | What |
+|---|---|
+| `cd scraper && go run . -q "…" -pages 4` | Go sidecar — concurrent scrape, ~550 posts/~5s, bulk-insert via HTTP |
+| `ruby cache/corpus_cache.rb pull\|replay -q "…"` | snapshot/replay corpus offline, zero network |
+| `npx convex run selftest:run` | prove engine invariants (determinism, bounds, conservation) |
+| `npx convex run ops:cleanup` | keep latest baseline + forks, cascade-delete the rest |
+| ⚙ Settings | BYOK Gemini · Ollama · HF token · rounds 6–20 · tick speed · model council |
 
-## The harness — 7 layers, all observable live
+**LLM tiers:** local (Ollama) → Gemini → deterministic fallback; the pit wall shows which
+is live. **Model council:** each configured model blind-predicts final approval%; scored
+against the engine's ground truth (100 − |error|).
 
-| Layer | What | Convex surface |
-|---|---|---|
-| L0 INGEST | Reddit(→Lemmy fallback)/HN/Bluesky/Mastodon fetch + X import | actions, scheduler |
-| L1 DISTILL | real posts → 6–8 cohorts (names, stances, seed quotes) | action + Gemini (fallback: keyword clustering) |
-| L2 POPULATE | 1,800 personas, each grown from a real post (`seedRef`) | mutation, chunked tables (500/chunk) |
-| L3 GRAPH | homophilous social graph, packed adjacency | mutation |
-| L4 SIMULATE | 12 durable rounds of influence propagation | **Workflow component** — survives backend kills |
-| L5 VOICES | sampled persona quotes + Dissent Agent + Synthesizer | **Workpool** (4-parallel) + **Rate Limiter** (8/min) |
-| L6 SERVE | liveState/timeline/feed/factions/estimates | reactive queries — zero websocket code of ours |
+## 📁 Repo map
 
-The **Harness Console** (`②③` buttons) shows each layer light up as it runs; the
-pipeline rail, corpus ticker, and cohort cards are all live subscriptions.
+```
+convex/     schema · ingest · distill · populate · engine · sim(workflow) · voices · serve · council · selftest · ops
+src/        main.js (war-room canvas/SVG + Convex adapters + pit-wall chrome) · ignition.js (engine-start film)
+index.html  all views — landing · pit wall · harness · war room · settings
+scraper/    Go corpus sidecar          cache/  Ruby corpus cache          docs/  design spec + plan
+```
 
-## Demo script
-
-1. **Start the engine** → watch the ignition film → land on the **pit wall**.
-2. **Materialize personas** → Harness Console.
-3. **Fetch** any sources (real requests, watch the ticker fill) → **② Distill** → **③ Build network**.
-4. **Enter war room** → **Run**. Lights out, LAP counter climbs; 1,800 nodes polarize;
-   factions crystallize; the Dissent Agent fires at rounds 3/7.
-5. Copy the URL (it carries `#run=<id>`) into **another browser or device** — identical
-   live state, no refresh. That's Convex reactivity.
-6. **⚡ Intervene** mid-run → pick an amendment → timelines fork side by side.
-7. `kill` the `convex dev` process mid-run, restart it — the workflow **resumes where it
-   died** (verified: killed at round 3, completed to 12 untouched).
-8. **Verdict** → predicted approval, biggest risk, and amendments ranked by
-   counterfactual flips (4 silent scheduler runs of the same engine).
-9. Click any node → persona popover with its stance history **and the real post it grew
-   from**, linked to the source.
-
-## Honesty notes
-
-- X/Twitter's free API (~100 reads/mo) is unusable and scraping violates ToS — X ships
-  as paste/CSV import. Reddit's public JSON blocks many networks; the adapter falls back
-  to Lemmy and labels posts honestly.
-- Stance movement is deterministic math (bounded confidence + conviction hardening),
-  seeded and replayable. LLM calls voice the debate; they never move the numbers.
-- The pit-wall skin is presentation only — the film, the lights, the LAP counter. Kill
-  it (reduced-motion / skip) and the exact same engine runs underneath.
-
-## Repo map
-
-`convex/` — schema, ingest, distill, populate, engine, sim (workflow), voices, serve,
-pipeline, council, selftest, ops · `src/main.js` — vanilla UI (war room canvas/SVG
-renderers + Convex adapters + nav/pit-wall chrome) · `src/ignition.js` — engine-start
-film · `index.html` — all views (landing, pit wall, harness, war room, settings) ·
-`scraper/` — Go corpus sidecar · `cache/` — Ruby corpus cache · `docs/superpowers/` —
-design spec + implementation plan.
+<div align="center"><sub>Nav · <b>Home → Pit wall → Harness → War room → Settings</b> · every screen mirrors the same lap 🔴</sub></div>
