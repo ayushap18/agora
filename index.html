@@ -177,7 +177,14 @@
   .map-col{flex:1.55;display:flex;flex-direction:column;gap:12px;min-width:0}
   .map-wrap{flex:1;display:flex;gap:12px;min-height:0}
   .map-card{flex:1;position:relative;overflow:hidden;display:flex;flex-direction:column;min-width:0}
-  .map-card canvas{flex:1;width:100%;min-height:0;display:block;cursor:crosshair}
+  .map-card canvas{flex:1;width:100%;min-height:0;display:block;cursor:grab}
+  .map-card canvas.dragging{cursor:grabbing}
+  #hoverChip{position:fixed;display:none;z-index:30;pointer-events:none;
+    background:var(--surface-3);border:1px solid var(--ring);border-radius:8px;
+    padding:5px 9px;font-size:11.5px;box-shadow:0 6px 18px rgba(0,0,0,.5);white-space:nowrap}
+  #hoverChip .chip{margin-left:6px}
+  .map-hint{position:absolute;top:38px;right:12px;font-size:10px;color:var(--ink-3);
+    letter-spacing:.08em;pointer-events:none;opacity:.8}
   .map-card .card-h .fork-tag{font-size:10px;padding:2px 7px;border-radius:5px;letter-spacing:.06em}
   .axis-lab{position:absolute;bottom:34px;font-size:10px;letter-spacing:.22em;color:var(--ink-3);
     font-weight:700;pointer-events:none}
@@ -459,8 +466,9 @@
   </div>
 </div>
 
-<!-- node popover -->
+<!-- node popover + hover chip -->
 <div id="pop"></div>
+<div id="hoverChip"></div>
 
 <!-- intervene modal -->
 <div class="overlay" id="interveneModal">

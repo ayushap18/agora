@@ -1,37 +1,68 @@
-# AGORA — a Consequence Engine (showcase prototype)
+# AGORA — a Consequence Engine
 
 > Every decision gets debated after it ships. Agora lets you watch the debate before.
 
-Single-file prototype: `index.html`, zero dependencies, zero build.
+Paste a decision. Agora ingests **real posts from Reddit(-style), Hacker News, Bluesky,
+Mastodon (+ X via import)**, distills them into stakeholder cohorts, grows a
+**1,800-persona social graph**, and runs a **durable multi-round simulation** where
+opinions spread by bounded-confidence influence. Factions emerge. A Dissent Agent names
+who gets quietly hurt. Fork the timeline mid-run with an amendment and watch two futures
+diverge — all streaming live to every open browser via Convex reactive queries.
+
+## Run it
 
 ```sh
-python3 -m http.server 8642   # then open http://127.0.0.1:8642
+npm install
+CONVEX_AGENT_MODE=anonymous npx convex dev   # local backend, no account needed
+npx vite --port 8642                          # in a second terminal
+# open http://localhost:8642
 ```
 
-## Demo script (3 min)
-1. Pick a decision (or paste your own), optionally drop a CSV → **Materialize personas**.
-2. **Run** (or press `space`). Rounds tick; personas argue across the social graph; the
-   opinion-space map polarizes; the drift river moves; factions crystallize; the
-   **Dissent Agent** flags the quietly-hurt cohort.
-3. **⚡ Intervene** mid-run → pick an amendment → the timeline **forks**; both futures
-   simulate side by side (divergence chart + fork tally).
-4. Open a **second browser tab** at the same URL → it auto-joins as a live mirror
-   (BroadcastChannel — the "reactive queries" moment).
-5. Hard-reload mid-run → the setup screen offers **Resume** at the exact round
-   (localStorage — the "durable workflow" moment).
-6. **Verdict** → predicted approval, biggest risk, amendments ranked by projected
-   opposition flipped. Scrub the timeline to replay any round.
+Optional (real LLM voices — Gemini): `npx convex env set GEMINI_API_KEY <key>`.
+Without a key every Gemini call falls back to deterministic content sourced from the
+real corpus — nothing blocks.
 
-## Convex wiring plan (the real backend)
-The in-browser engine is a stand-in with the same state shape as the target schema
-(`runs / personas / edges / stances / factions / events`):
+## The harness — 7 layers, all observable live
 
-| Prototype piece | Convex replacement |
-|---|---|
-| `Sim.tick()` loop | Workflow component (durable N-round run) |
-| per-persona stance update | Workpool fan-out → Agent component threads + LLM action |
-| quote/reason templates | LLM `llmStance()` action, RAG over uploaded corpus (vector search) |
-| BroadcastChannel mirror | reactive `useQuery(api.sim.liveState)` — free, cross-device |
-| localStorage resume | Workflow durability — free |
-| `estimateFlips` clones | scheduler-spawned counterfactual runs |
-| tally recompute | Aggregate / Sharded Counter |
+| Layer | What | Convex surface |
+|---|---|---|
+| L0 INGEST | Reddit(→Lemmy fallback)/HN/Bluesky/Mastodon fetch + X import | actions, scheduler |
+| L1 DISTILL | real posts → 6–8 cohorts (names, stances, seed quotes) | action + Gemini (fallback: keyword clustering) |
+| L2 POPULATE | 1,800 personas, each grown from a real post (`seedRef`) | mutation, chunked tables (500/chunk) |
+| L3 GRAPH | homophilous social graph, packed adjacency | mutation |
+| L4 SIMULATE | 12 durable rounds of influence propagation | **Workflow component** — survives backend kills |
+| L5 VOICES | sampled persona quotes + Dissent Agent + Synthesizer | **Workpool** (4-parallel) + **Rate Limiter** (8/min) |
+| L6 SERVE | liveState/timeline/feed/factions/estimates | reactive queries — zero websocket code of ours |
+
+The **Harness Console** (`②③` buttons) shows each layer light up as it runs; the
+pipeline rail, corpus ticker, and cohort cards are all live subscriptions.
+
+## Demo script
+
+1. Landing → **Materialize personas** → Harness Console.
+2. **Fetch** any sources (real requests, watch the ticker fill) → **② Distill** → **③ Build network**.
+3. **Enter war room** → **Run**. 1,800 nodes polarize; factions crystallize; the Dissent
+   Agent fires at rounds 3/7.
+4. Copy the URL (it carries `#run=<id>`) into **another browser or device** — identical
+   live state, no refresh. That's Convex reactivity.
+5. **⚡ Intervene** mid-run → pick an amendment → timelines fork side by side.
+6. `kill` the `convex dev` process mid-run, restart it — the workflow **resumes where it
+   died** (verified: killed at round 3, completed to 12 untouched).
+7. **Verdict** → predicted approval, biggest risk, and amendments ranked by
+   counterfactual flips (4 silent scheduler runs of the same engine).
+8. Click any node → persona popover with its stance history **and the real post it grew
+   from**, linked to the source.
+
+## Honesty notes
+
+- X/Twitter's free API (~100 reads/mo) is unusable and scraping violates ToS — X ships
+  as paste/CSV import. Reddit's public JSON blocks many networks; the adapter falls back
+  to Lemmy and labels posts honestly.
+- Stance movement is deterministic math (bounded confidence + conviction hardening),
+  seeded and replayable. LLM calls voice the debate; they never move the numbers.
+
+## Repo map
+
+`convex/` — schema, ingest, distill, populate, engine, sim (workflow), voices, serve,
+pipeline · `src/main.js` — vanilla UI (war room canvas/SVG renderers + Convex adapters)
+· `index.html` — all views · `docs/superpowers/` — design spec + implementation plan.

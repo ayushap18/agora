@@ -1238,3 +1238,164 @@ $('verdictBtn').onclick=async()=>{
   const m=location.hash.match(/run=([a-z0-9]+)/);
   if(m)enterWarRoom(m[1]);
 })();
+
+/* ═══════════════ INTERACTIVE OPINION SPACE (zoom · pan · hover) ═══════════════
+   World coords = stance-x / cohort-band-y in device px. screen = world*zoom+pan.
+   Edges render to an offscreen layer only when the round (or view size) changes;
+   only the hovered node's edges stroke live. */
+const mapViews=new Map();
+function mapView(cv){
+  let v=mapViews.get(cv);
+  if(!v){v={zoom:1,panX:0,panY:0,hover:-1,drag:null,dragged:false,edgeCv:null,edgeKey:''};
+    mapViews.set(cv,v);bindMap(cv,v)}
+  return v;
+}
+const wxOf=(s,Wp)=>Wp/2+s*Wp*.4;
+const wyOf=(pos,Hp)=>Hp*.06+pos.y*Hp*.78;
+
+function cDrawMap(cv,adapter,viewStances){
+  if(!adapter.meta||!adapter.count)return;
+  const view=mapView(cv),ctx=cv.getContext('2d');
+  const Wp=cv.width,Hp=cv.height,dpr=devicePixelRatio;
+  if(!Wp)return;
+  const st=viewStances||adapter.stances();
+  if(!st.length)return;
+  const now=performance.now();
+
+  // ── cached edge layer (world coords, per-round) ──
+  const key=`${Wp}x${Hp}:${adapter.round}:${viewStances?'scrub'+$('scrub').value:'live'}`;
+  if(view.edgeKey!==key||adapter.edgesDirty){
+    view.edgeKey=key;adapter.edgesDirty=false;
+    if(!view.edgeCv)view.edgeCv=document.createElement('canvas');
+    view.edgeCv.width=Wp;view.edgeCv.height=Hp;
+    const e=view.edgeCv.getContext('2d');
+    e.lineWidth=Math.max(1,.6*dpr);
+    for(let i=0;i<adapter.count;i++){
+      const nb=adapter.adj[i];if(!nb)continue;
+      const x1=wxOf(st[i],Wp),y1=wyOf(adapter.pos[i],Hp);
+      for(const j of nb){
+        if(j<i||j>=adapter.count)continue;
+        const agree=1-Math.abs(st[i]-st[j])/2;
+        e.strokeStyle=`rgba(200,200,200,${(.02+agree*.03).toFixed(3)})`;
+        e.beginPath();e.moveTo(x1,y1);e.lineTo(wxOf(st[j],Wp),wyOf(adapter.pos[j],Hp));e.stroke();
+      }
+    }
+  }
+
+  ctx.clearRect(0,0,Wp,Hp);
+  ctx.save();
+  ctx.setTransform(view.zoom,0,0,view.zoom,view.panX,view.panY);
+  ctx.strokeStyle='rgba(255,255,255,.06)';ctx.lineWidth=1;
+  ctx.setLineDash([4*dpr,6*dpr]);
+  ctx.beginPath();ctx.moveTo(Wp/2,Hp*.03);ctx.lineTo(Wp/2,Hp*.9);ctx.stroke();
+  ctx.setLineDash([]);
+  if(view.edgeCv)ctx.drawImage(view.edgeCv,0,0);
+  ctx.restore();
+
+  // ── nodes (screen space; positions stored for hit-testing) ──
+  const rScale=Math.sqrt(view.zoom);
+  for(let i=0;i<adapter.count;i++){
+    const p=adapter.personas[i],pos=adapter.pos[i];
+    const twx=wxOf(st[i],Wp);
+    pos.wx=pos.wx?pos.wx+(twx-pos.wx)*.12:twx;      // responsive, not floaty
+    const wy=wyOf(pos,Hp)+Math.cos(now/2300+pos.jit)*1.4*dpr;
+    const sx=pos.wx*view.zoom+view.panX,sy=wy*view.zoom+view.panY;
+    if(sx<-24||sx>Wp+24||sy<-24||sy>Hp+24){pos.x=-1e4;pos.sy=-1e4;continue}  // cull
+    const r=(2.2+p.inf*2.4)*dpr*rScale;
+    if(Math.abs(st[i])>.6){
+      ctx.fillStyle=stanceColor(st[i],.16);
+      ctx.beginPath();ctx.arc(sx,sy,r*2,0,7);ctx.fill();
+    }
+    ctx.fillStyle=stanceColor(st[i],.95);
+    ctx.beginPath();ctx.arc(sx,sy,r,0,7);ctx.fill();
+    if(p.inf>1.4){ctx.strokeStyle='rgba(255,255,255,.5)';ctx.lineWidth=1*dpr;
+      ctx.beginPath();ctx.arc(sx,sy,r+2*dpr,0,7);ctx.stroke()}
+    pos.x=sx;pos.sy=sy;pos.sr=r;
+  }
+
+  // ── hover: node ring + its live edges ──
+  const h=view.hover;
+  if(h>=0&&h<adapter.count&&adapter.pos[h].x>-1e3){
+    const hp=adapter.pos[h];
+    ctx.strokeStyle='rgba(255,255,255,.28)';ctx.lineWidth=Math.max(1,.9*dpr);
+    for(const j of adapter.adj[h]||[]){
+      if(j>=adapter.count)continue;
+      const jx=wxOf(st[j],Wp)*view.zoom+view.panX;
+      const jy=wyOf(adapter.pos[j],Hp)*view.zoom+view.panY;
+      ctx.beginPath();ctx.moveTo(hp.x,hp.sy);ctx.lineTo(jx,jy);ctx.stroke();
+      ctx.fillStyle='rgba(255,255,255,.6)';
+      ctx.beginPath();ctx.arc(jx,jy,2.2*dpr,0,7);ctx.fill();
+    }
+    ctx.strokeStyle='#fff';ctx.lineWidth=1.4*dpr;
+    ctx.beginPath();ctx.arc(hp.x,hp.sy,hp.sr+3*dpr,0,7);ctx.stroke();
+  }
+}
+
+function adapterFor(cv){return cv===cvA?W.A:W.B}
+function bindMap(cv,view){
+  cv.addEventListener('wheel',e=>{
+    e.preventDefault();
+    const dpr=devicePixelRatio,r=cv.getBoundingClientRect();
+    const mx=(e.clientX-r.left)*dpr,my=(e.clientY-r.top)*dpr;
+    const nz=Math.min(4,Math.max(.5,view.zoom*Math.exp(-e.deltaY*.0012)));
+    view.panX=mx-(mx-view.panX)*(nz/view.zoom);
+    view.panY=my-(my-view.panY)*(nz/view.zoom);
+    view.zoom=nz;
+  },{passive:false});
+  cv.addEventListener('mousedown',e=>{
+    view.drag={x:e.clientX,y:e.clientY,panX:view.panX,panY:view.panY};
+    cv.classList.add('dragging');
+  });
+  cv.addEventListener('mousemove',e=>{
+    const dpr=devicePixelRatio;
+    if(view.drag){
+      const dx=(e.clientX-view.drag.x)*dpr,dy=(e.clientY-view.drag.y)*dpr;
+      if(Math.abs(dx)+Math.abs(dy)>6)view.dragged=true;
+      view.panX=view.drag.panX+dx;view.panY=view.drag.panY+dy;
+      return;
+    }
+    const ad=adapterFor(cv);if(!ad||!ad.count)return;
+    const r=cv.getBoundingClientRect();
+    const mx=(e.clientX-r.left)*dpr,my=(e.clientY-r.top)*dpr;
+    let best=-1,bd=(16*dpr)**2;
+    for(let i=0;i<ad.count;i++){
+      const p=ad.pos[i];if(p.x<-1e3)continue;
+      const d2=(p.x-mx)**2+(p.sy-my)**2;
+      if(d2<bd){bd=d2;best=i}
+    }
+    view.hover=best;
+    cv.style.cursor=best>=0?'pointer':'';
+    const chip=$('hoverChip');
+    if(best>=0&&ad.meta){
+      const cName=(ad.d.cohorts[ad.meta.cohortIdx[best]]||{}).name||'—';
+      chip.innerHTML=`<b>${ad.meta.names[best]}</b><span class="chip">${cName}</span>`;
+      chip.style.display='block';
+      chip.style.left=(e.clientX+14)+'px';
+      chip.style.top=(e.clientY-30)+'px';
+    }else chip.style.display='none';
+  });
+  const endDrag=()=>{view.drag=null;cv.classList.remove('dragging');
+    requestAnimationFrame(()=>{view.dragged=false})};
+  cv.addEventListener('mouseup',endDrag);
+  cv.addEventListener('mouseleave',()=>{endDrag();view.hover=-1;$('hoverChip').style.display='none'});
+  cv.addEventListener('dblclick',()=>{view.zoom=1;view.panX=0;view.panY=0});
+}
+
+/* factions strip now reads adapters, not the retired local sims */
+renderFactions=function(){
+  const put=(box,ad)=>{
+    box.innerHTML='';
+    (ad?ad.factions:[]).forEach(f=>{
+      const c=el('div','faction',`<b>${f.name}</b>${f.n} personas · “${f.arg}”`);
+      c.style.borderLeftColor=f.side==='opp'?'var(--opp)':'var(--sup)';
+      box.append(c);
+    });
+  };
+  put($('factionsA'),W.A);put($('factionsB'),W.B);
+};
+
+/* zoom/pan/hover affordance hint on the map cards */
+document.querySelectorAll('.map-card').forEach(mc=>{
+  mc.insertAdjacentHTML('beforeend','<span class="map-hint">SCROLL ZOOM · DRAG PAN · CLICK PERSONA</span>');
+});
+Object.assign(window,{mapView,cDrawMap});
