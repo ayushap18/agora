@@ -123,14 +123,15 @@ export const estimate = mutation({
   },
 });
 
-async function cascadeDelete(ctx: any, runId: any) {
-  for (const table of ["personaChunks", "adjChunks", "roundStats"] as const) {
+export async function cascadeDelete(ctx: any, runId: any) {
+  // ALL seven child tables — a run must never leave orphans behind
+  for (const table of ["personaChunks", "adjChunks", "roundStats", "voices", "factions", "events"] as const) {
     const rows = await ctx.db.query(table).withIndex("by_run", (q: any) => q.eq("runId", runId)).collect();
     for (const r of rows) await ctx.db.delete(r._id);
   }
   const scs = await ctx.db.query("stanceChunks").withIndex("by_run_round", (q: any) => q.eq("runId", runId)).collect();
   for (const r of scs) await ctx.db.delete(r._id);
-  await ctx.db.delete(runId);
+  if (await ctx.db.get(runId)) await ctx.db.delete(runId);
 }
 
 export const deleteRunCascade = internalMutation({

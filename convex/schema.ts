@@ -27,7 +27,8 @@ export default defineSchema({
     ts: v.number(),
     tags: v.optional(v.array(v.string())),
     cohortIdx: v.optional(v.number()),
-  }).index("by_source", ["sourceId"]),
+    hash: v.optional(v.string()),
+  }).index("by_source", ["sourceId"]).index("by_hash", ["hash"]),
   cohorts: defineTable({
     decisionId: v.id("decisions"),
     idx: v.number(),

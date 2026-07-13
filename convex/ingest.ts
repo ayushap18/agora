@@ -4,7 +4,7 @@ import { v } from "convex/values";
 
 const UA = { "User-Agent": "agora-research/0.1 (hackathon prototype)" };
 const strip = (html: string) =>
-  html.replace(/<[^>]+>/g, " ").replace(/&\w+;/g, " ").replace(/\s+/g, " ").trim();
+  html.replace(/<[^>]+>/g, " ").replace(/&#?\w+;/g, " ").replace(/\s+/g, " ").trim();
 
 type RawPost = { platform: string; author: string; text: string; score: number; url?: string; ts: number };
 
@@ -44,9 +44,37 @@ export const importX = mutation({
   },
 });
 
+// FNV-1a over normalized text — cheap content address for cross-run dedupe.
+function textHash(text: string): string {
+  const norm = text.toLowerCase().replace(/https?:\/\/\S+/g, "").replace(/\s+/g, " ").trim();
+  let h = 0x811c9dc5;
+  for (let i = 0; i < norm.length; i++) {
+    h ^= norm.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h.toString(16) + ":" + norm.length;
+}
+
+function isJunk(text: string): boolean {
+  const words = text.replace(/https?:\/\/\S+/g, "").trim().split(/\s+/).filter(Boolean);
+  return words.length < 5; // link-only / emoji-only / fragment posts
+}
+
+// The single insert path for ALL ingestion (native fetch, X import, Go scraper,
+// Ruby cache replay): quality-gates and dedupes by content hash.
 async function insertPostRows(ctx: any, sourceId: any, posts: RawPost[]) {
-  for (const p of posts) await ctx.db.insert("posts", { sourceId, ...p });
-  await ctx.db.patch(sourceId, { status: "done", count: posts.length });
+  let inserted = 0, skipped = 0;
+  for (const p of posts) {
+    if (isJunk(p.text)) { skipped++; continue; }
+    const hash = textHash(p.text);
+    const dup = await ctx.db.query("posts")
+      .withIndex("by_hash", (q: any) => q.eq("hash", hash)).first();
+    if (dup) { skipped++; continue; }
+    await ctx.db.insert("posts", { sourceId, ...p, hash });
+    inserted++;
+  }
+  await ctx.db.patch(sourceId, { status: "done", count: inserted });
+  return { inserted, skipped };
 }
 
 export const insertPosts = internalMutation({
@@ -225,13 +253,20 @@ export const insertScraped = mutation({
     })),
   },
   handler: async (ctx, { platform, query, posts }) => {
+    if (posts.length > 500) throw new Error(`batch too large (${posts.length} > 500) — chunk client-side`);
     const sourceId = await ctx.db.insert("sources", { platform, query: query + " (go)", status: "running", count: 0 });
-    const rows = posts.slice(0, 500).map((p) => ({ platform, ...p }));
-    await insertPostRows(ctx, sourceId, rows);
+    const rows = posts.map((p) => ({ platform, ...p }));
+    const { inserted, skipped } = await insertPostRows(ctx, sourceId, rows);
     await ctx.runMutation(internal.pipeline.log, {
       layer: "L0", status: "done", progress: 1,
-      detail: `${platform} (go scraper): ${rows.length} posts for "${query}"`,
+      detail: `${platform} (go scraper): +${inserted} posts (${skipped} dup/junk skipped)`,
     });
-    return { inserted: rows.length };
+    return { inserted, skipped };
   },
+});
+
+// which LLM tier is live (shown as a chip in the harness console)
+export const llmInfo = action({
+  args: {},
+  handler: async () => (await import("./llm")).llmStatus(),
 });

@@ -33,6 +33,19 @@ is exactly the process that dies.
 invariants on demand (same-seed determinism, stance bounds, tally conservation,
 roundStats integrity, drift sanity) and cleans up after itself.
 
+**Corpus cache (Ruby):** `ruby cache/corpus_cache.rb pull|replay|list|stats|clean -q "…"`
+— snapshots Go-scraper pulls to disk and replays them into Convex with zero network
+(offline-demo insurance + instant refills). All ingest paths share one server-side
+gate: content-hash dedupe + ≥5-word quality filter, so re-runs never store garbage.
+
+**Local LLM:** `npx convex env set LOCAL_LLM_URL http://127.0.0.1:11434` (Ollama) and
+optionally `LOCAL_LLM_MODEL llama3.2` — the voices/distill chain tries local → Gemini
+→ deterministic fallback. The dashboard's LLM-tier tile shows which is live.
+
+**Workspace hygiene:** `npx convex run ops:cleanup` (or the dashboard's Clean
+workspace button) — keeps the latest baseline per decision + its forks, cascade-deletes
+everything else in batches, sweeps orphans/duplicates/failed sources.
+
 ## The harness — 7 layers, all observable live
 
 | Layer | What | Convex surface |

@@ -13,14 +13,25 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"html"
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"regexp"
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 )
+
+func tsOf(raw string) float64 {
+	t, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		return float64(time.Now().UnixMilli())
+	}
+	return float64(t.UnixMilli())
+}
 
 type Post struct {
 	Author string  `json:"author"`
@@ -34,20 +45,33 @@ var (
 	deployment = flag.String("deployment", "http://127.0.0.1:3210", "Convex deployment URL")
 	query      = flag.String("q", "", "search query (required)")
 	pages      = flag.Int("pages", 3, "pages per source")
+	dump       = flag.String("dump", "", "also write deduped results as JSON to this file")
+	noInsert   = flag.Bool("no-insert", false, "skip Convex insert (use with -dump for cache-only pulls)")
 	client     = &http.Client{Timeout: 12 * time.Second}
 	tagRe      = regexp.MustCompile(`<[^>]+>|&\w+;`)
 	spaceRe    = regexp.MustCompile(`\s+`)
 )
 
+var (
+	mdLinkRe  = regexp.MustCompile(`\[([^\]]*)\]\([^)]*\)`)
+	mdQuoteRe = regexp.MustCompile(`(?m)^>\s?`)
+)
+
 func strip(s string) string {
+	s = html.UnescapeString(s)             // &#x27; &amp; …
+	s = mdLinkRe.ReplaceAllString(s, "$1") // [text](url) → text
+	s = mdQuoteRe.ReplaceAllString(s, "")
 	return strings.TrimSpace(spaceRe.ReplaceAllString(tagRe.ReplaceAllString(s, " "), " "))
 }
 
 func clip(s string, n int) string {
-	if len(s) > n {
-		return s[:n]
+	if len(s) <= n {
+		return s
 	}
-	return s
+	for n > 0 && !utf8.RuneStart(s[n]) { // never split a multibyte rune
+		n--
+	}
+	return s[:n]
 }
 
 // getJSON fetches u and decodes into v, with one retry.
@@ -69,6 +93,10 @@ func getJSON(u string, v any) error {
 		}
 		if resp.StatusCode != 200 {
 			lastErr = fmt.Errorf("HTTP %d", resp.StatusCode)
+			if resp.StatusCode < 500 && resp.StatusCode != 429 {
+				return lastErr // 4xx (except 429) won't improve on retry
+			}
+			time.Sleep(600 * time.Millisecond)
 			continue
 		}
 		return json.Unmarshal(body, v)
@@ -130,7 +158,7 @@ func scrapeBluesky(q string, pages int, out chan<- []Post) {
 				RepostCount float64 `json:"repostCount"`
 			} `json:"posts"`
 		}
-		u := fmt.Sprintf("https://api.bsky.app/xrpc/app.bsky.feed.searchPosts?q=%s&limit=100", url.QueryEscape(q))
+		u := fmt.Sprintf("https://api.bsky.app/xrpc/app.bsky.feed.searchPosts?q=%s&limit=100&lang=en", url.QueryEscape(q))
 		if cursor != "" {
 			u += "&cursor=" + url.QueryEscape(cursor)
 		}
@@ -140,13 +168,12 @@ func scrapeBluesky(q string, pages int, out chan<- []Post) {
 		}
 		var batch []Post
 		for _, b := range res.Posts {
-			ts, _ := time.Parse(time.RFC3339, b.Record.CreatedAt)
 			parts := strings.Split(b.URI, "/")
 			batch = append(batch, Post{
 				Author: b.Author.Handle, Text: clip(b.Record.Text, 800),
 				Score: b.LikeCount + b.RepostCount,
 				URL:   fmt.Sprintf("https://bsky.app/profile/%s/post/%s", b.Author.Handle, parts[len(parts)-1]),
-				TS:    float64(ts.UnixMilli()),
+				TS:    tsOf(b.Record.CreatedAt),
 			})
 		}
 		if len(batch) == 0 {
@@ -160,42 +187,48 @@ func scrapeBluesky(q string, pages int, out chan<- []Post) {
 	}
 }
 
+type mastoStatus struct {
+	ID      string  `json:"id"`
+	Content string  `json:"content"`
+	URL     string  `json:"url"`
+	Created string  `json:"created_at"`
+	Lang    string  `json:"language"`
+	Favs    float64 `json:"favourites_count"`
+	Boosts  float64 `json:"reblogs_count"`
+	Account struct {
+		Acct string `json:"acct"`
+	} `json:"account"`
+}
+
 func scrapeMastodon(q string, pages int, out chan<- []Post) {
-	tag := strings.ToLower(strings.ReplaceAll(q, " ", ""))
 	maxID := ""
 	for p := 0; p < pages; p++ {
-		var res []struct {
-			ID      string `json:"id"`
-			Content string `json:"content"`
-			URL     string `json:"url"`
-			Created string `json:"created_at"`
-			Favs    float64 `json:"favourites_count"`
-			Boosts  float64 `json:"reblogs_count"`
-			Account struct {
-				Acct string `json:"acct"`
-			} `json:"account"`
+		var wrap struct {
+			Statuses []mastoStatus `json:"statuses"`
 		}
-		u := fmt.Sprintf("https://mastodon.social/api/v1/timelines/tag/%s?limit=40", url.PathEscape(tag))
+		u := fmt.Sprintf("https://mastodon.social/api/v2/search?type=statuses&limit=40&q=%s", url.QueryEscape(q))
 		if maxID != "" {
 			u += "&max_id=" + maxID
 		}
-		if err := getJSON(u, &res); err != nil {
+		if err := getJSON(u, &wrap); err != nil {
 			fmt.Printf("  mastodon page %d: %v\n", p, err)
 			return
 		}
-		if len(res) == 0 {
+		if len(wrap.Statuses) == 0 {
 			return
 		}
 		var batch []Post
-		for _, t := range res {
-			ts, _ := time.Parse(time.RFC3339, t.Created)
+		for _, t := range wrap.Statuses {
+			if t.Lang != "" && t.Lang != "en" {
+				continue
+			}
 			batch = append(batch, Post{
 				Author: t.Account.Acct, Text: clip(strip(t.Content), 800),
-				Score: t.Favs + t.Boosts, URL: t.URL, TS: float64(ts.UnixMilli()),
+				Score: t.Favs + t.Boosts, URL: t.URL, TS: tsOf(t.Created),
 			})
 		}
 		out <- batch
-		maxID = res[len(res)-1].ID
+		maxID = wrap.Statuses[len(wrap.Statuses)-1].ID
 	}
 }
 
@@ -227,33 +260,55 @@ func scrapeLemmy(q string, pages int, out chan<- []Post) {
 		}
 		var batch []Post
 		for _, c := range res.Comments {
-			ts, _ := time.Parse(time.RFC3339, c.Comment.Published)
 			batch = append(batch, Post{
 				Author: c.Creator.Name, Text: clip(strip(c.Comment.Content), 800),
-				Score: c.Counts.Score, URL: c.Comment.ApID, TS: float64(ts.UnixMilli()),
+				Score: c.Counts.Score, URL: c.Comment.ApID, TS: tsOf(c.Comment.Published),
 			})
 		}
 		out <- batch
 	}
 }
 
-// insertBatch bulk-inserts one platform's posts through the Convex HTTP API.
-func insertBatch(platform string, posts []Post) error {
-	body, _ := json.Marshal(map[string]any{
-		"path":   "ingest:insertScraped",
-		"args":   map[string]any{"platform": platform, "query": *query, "posts": posts},
-		"format": "json",
-	})
-	resp, err := client.Post(*deployment+"/api/mutation", "application/json", bytes.NewReader(body))
-	if err != nil {
-		return err
+// insertBatch bulk-inserts one platform's posts in ≤400-row chunks (the Convex
+// mutation hard-rejects >500) and returns the server-confirmed insert count.
+func insertBatch(platform string, posts []Post) (int, error) {
+	inserted := 0
+	for lo := 0; lo < len(posts); lo += 400 {
+		hi := min(lo+400, len(posts))
+		body, _ := json.Marshal(map[string]any{
+			"path":   "ingest:insertScraped",
+			"args":   map[string]any{"platform": platform, "query": *query, "posts": posts[lo:hi]},
+			"format": "json",
+		})
+		resp, err := client.Post(*deployment+"/api/mutation", "application/json", bytes.NewReader(body))
+		if err != nil {
+			return inserted, err
+		}
+		raw, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != 200 {
+			return inserted, fmt.Errorf("convex HTTP %d: %s", resp.StatusCode, clip(string(raw), 200))
+		}
+		var res struct {
+			Status string `json:"status"`
+			Value  struct {
+				Inserted float64 `json:"inserted"`
+			} `json:"value"`
+			ErrorMessage string `json:"errorMessage"`
+		}
+		if err := json.Unmarshal(raw, &res); err != nil {
+			return inserted, err
+		}
+		if res.Status != "success" {
+			return inserted, fmt.Errorf("convex error: %s", clip(res.ErrorMessage, 200))
+		}
+		inserted += int(res.Value.Inserted)
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		b, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("convex HTTP %d: %s", resp.StatusCode, clip(string(b), 200))
-	}
-	return nil
+	return inserted, nil
+}
+
+func writeFile(path string, b []byte) error {
+	return os.WriteFile(path, b, 0o644)
 }
 
 func main() {
@@ -292,11 +347,12 @@ func main() {
 
 	// dedupe across all sources by normalized-text hash
 	seen := map[[20]byte]bool{}
-	total, inserted := 0, 0
+	deduped := map[string][]Post{}
+	total := 0
 	for platform, posts := range results {
-		var unique []Post
+		total += len(posts)
 		for _, p := range posts {
-			if len(p.Text) < 31 {
+			if len(strings.Fields(p.Text)) < 5 { // junk gate: need at least 5 words
 				continue
 			}
 			h := sha1.Sum([]byte(strings.ToLower(p.Text)))
@@ -304,18 +360,33 @@ func main() {
 				continue
 			}
 			seen[h] = true
-			unique = append(unique, p)
+			deduped[platform] = append(deduped[platform], p)
 		}
-		total += len(posts)
-		if len(unique) == 0 {
+	}
+	if *dump != "" {
+		f, err := json.MarshalIndent(map[string]any{"query": *query, "ts": time.Now().UnixMilli(), "posts": deduped}, "", " ")
+		if err == nil {
+			err = writeFile(*dump, f)
+		}
+		if err != nil {
+			fmt.Printf("  dump failed: %v\n", err)
+		} else {
+			fmt.Printf("  dumped to %s\n", *dump)
+		}
+	}
+	inserted := 0
+	for platform, unique := range deduped {
+		if *noInsert || len(unique) == 0 {
 			continue
 		}
-		if err := insertBatch(platform, unique); err != nil {
-			fmt.Printf("  %s insert failed: %v\n", platform, err)
+		n, err := insertBatch(platform, unique)
+		inserted += n
+		if err != nil {
+			fmt.Printf("  %s insert failed after %d rows: %v\n", platform, n, err)
 			continue
 		}
-		inserted += len(unique)
-		fmt.Printf("  %-9s %4d scraped → %4d unique inserted\n", platform, len(posts), len(unique))
+		fmt.Printf("  %-9s %4d scraped → %4d unique → %4d stored (server deduped)\n",
+			platform, len(results[platform]), len(unique), n)
 	}
 	fmt.Printf("done: %d scraped, %d inserted in %.1fs (concurrent, %d pages/source)\n",
 		total, inserted, time.Since(start).Seconds(), *pages)

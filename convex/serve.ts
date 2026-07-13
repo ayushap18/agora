@@ -190,3 +190,13 @@ export const estimates = query({
     };
   },
 });
+
+// decision context for mirrors/hash-loaded tabs (title + amendments come from
+// the server, never from local sample data)
+export const decision = query({
+  args: { decisionId: v.id("decisions") },
+  handler: async (ctx, { decisionId }) => {
+    const d = await ctx.db.get(decisionId);
+    return d ? { title: d.title, body: d.body, amendments: d.amendments } : null;
+  },
+});

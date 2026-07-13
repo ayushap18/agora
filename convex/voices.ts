@@ -3,7 +3,7 @@ import { RateLimiter, MINUTE } from "@convex-dev/rate-limiter";
 import { components, internal } from "./_generated/api";
 import { internalAction, internalMutation, internalQuery } from "./_generated/server";
 import { v } from "convex/values";
-import { geminiJson } from "./gemini";
+import { llmJson } from "./llm";
 import { mulberry32 } from "./populate";
 
 const pool = new Workpool(components.voicesPool, { maxParallelism: 4 });
@@ -103,7 +103,7 @@ export const speak = internalAction({
     let text: string | null = null;
     const ok = await rl.limit(ctx, "gemini");
     if (ok.ok) {
-      const g = await geminiJson(
+      const g = await llmJson(
 `You are ${c.name}, a member of "${c.cohort}", reacting in round ${round} of an ongoing debate about:
 "${c.decisionTitle}"${c.amendment ? `\nAn amendment is now in effect: "${c.amendment}"` : ""}
 Your current stance: ${c.stance.toFixed(2)} (-1 opposed .. +1 supportive).
@@ -165,7 +165,7 @@ export const dissent = internalAction({
       (target.hurt ?? "Strongly opposed, structurally voiceless: they lose this debate without ever being heard in it.");
     const ok = await rl.limit(ctx, "gemini");
     if (ok.ok) {
-      const g = await geminiJson(
+      const g = await llmJson(
 `You are the DISSENT AGENT: your only job is naming who gets quietly hurt.
 Decision: "${decisionTitle}". The cohort "${target.name}" (${target.n} members, mean stance ${target.mean.toFixed(2)}, ${Math.round(target.inf * 100)}% of network influence${target.hurt ? `, context: ${target.hurt}` : ""}) is losing with the least voice.
 One sharp sentence (max 200 chars) naming the quiet harm. Return JSON: {"text":"..."}`);
@@ -187,7 +187,7 @@ export const synthesize = internalAction({
       `Hardest opposition: ${stats.slice().sort((a: any, b: any) => a.mean - b.mean)[0]?.name ?? "—"}.`;
     const ok = await rl.limit(ctx, "gemini");
     if (ok.ok) {
-      const g = await geminiJson(
+      const g = await llmJson(
 `Synthesize round ${round} of a simulated public debate on "${decisionTitle}".
 Tally: ${pct(tally.sup)}% support, ${pct(tally.neu)}% undecided, ${pct(tally.opp)}% opposed.
 Cohorts: ${stats.map((s: any) => `${s.name} (${s.n}p, mean ${s.mean.toFixed(2)})`).join("; ")}.

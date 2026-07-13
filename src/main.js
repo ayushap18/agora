@@ -392,7 +392,7 @@ $('interveneBtn').onclick=()=>{
   S.sim.d.amendments.forEach(a=>{
     const flips=estimateFlips(a);
     const b=el('button','amend',
-      `<div><b>${a.label}</b><div style="color:var(--ink-3);font-size:11.5px;margin-top:2px">${a.detail}</div></div>
+      `<div><b>${esc(a.label)}</b><div style="color:var(--ink-3);font-size:11.5px;margin-top:2px">${esc(a.detail)}</div></div>
        <span class="fx"><b>≈${flips} flip</b>projected</span>`);
     b.onclick=()=>{fork(a);closeModals()};
     list.append(b);
@@ -683,7 +683,7 @@ function renderFactions(){
   const put=(box,sim)=>{
     box.innerHTML='';
     (sim?sim.factions:[]).forEach(f=>{
-      const c=el('div','faction',`<b>${f.name}</b>${f.n} personas · “${f.arg}”`);
+      const c=el('div','faction',`<b>${esc(f.name)}</b>${f.n} personas · “${esc(f.arg)}”`);
       c.style.borderLeftColor=f.side==='opp'?'var(--opp)':'var(--sup)';
       box.append(c);
     });
@@ -818,6 +818,7 @@ function openHarness(){
     b.onclick=async()=>{
       const plat=b.dataset.fetch;
       const input=document.querySelector(`input[data-plat="${plat}"]`);
+      if(!input.value.trim())return;
       b.disabled=true;
       try{await client.mutation(api.ingest.start,{platform:plat,query:input.value.trim()});}
       catch(e){console.error(e)}
@@ -828,10 +829,15 @@ function openHarness(){
 $('harnessBack').onclick=()=>showView('setup');
 $('xImportBtn').onclick=async()=>{
   const t=$('xImport').value.trim();if(!t)return;
-  const r=await client.mutation(api.ingest.importX,{text:t});
-  $('xImport').value='';
-  $('xImportBtn').textContent=`Imported ${r.count} ✓`;
-  setTimeout(()=>$('xImportBtn').textContent='Import X posts',2500);
+  const b=$('xImportBtn');b.disabled=true;
+  try{
+    const r=await client.mutation(api.ingest.importX,{text:t});
+    $('xImport').value='';
+    b.textContent=`Imported ${r.count} ✓`;
+    setTimeout(()=>{b.textContent='Import X posts'},2500);
+  }catch(e){console.error(e);b.textContent='Import failed';
+    setTimeout(()=>{b.textContent='Import X posts'},2500);}
+  finally{b.disabled=false}
 };
 
 /* live subscriptions — every open screen sees the same pipeline */
@@ -859,7 +865,7 @@ client.onUpdate(api.ingest.recentPosts,{limit:30},posts=>{
   const t=$('postTicker');if(!t)return;t.innerHTML='';
   posts.forEach(p=>{
     t.append(el('div','tick-post',
-      `<div class="who"><b>@${p.author}</b><span class="chip">${p.platform}</span>▲ ${p.score}</div>${p.text}`));
+      `<div class="who"><b>@${esc(p.author)}</b><span class="chip">${esc(p.platform)}</span>▲ ${p.score}</div>${esc(p.text)}`));
   });
 });
 client.onUpdate(api.ingest.postCount,{},n=>{$('postTotal').textContent=n+' posts in corpus'});
@@ -888,11 +894,11 @@ function renderCohorts(cs){
   cs.forEach(c=>{
     box.append(el('div','cohort-row',
       `<i style="width:9px;height:9px;border-radius:3px;background:${COHORT_COLORS[c.idx%8]};flex:none"></i>
-       <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.name}</span>
+       <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c.name)}</span>
        <span class="bar" style="max-width:70px"><i style="width:${Math.round(c.share*100)}%;background:${COHORT_COLORS[c.idx%8]}"></i></span>
        <span class="chip" style="color:${c.baseStance<-0.15?'var(--opp)':c.baseStance>0.15?'var(--sup)':'var(--ink-2)'}">${c.baseStance>=0?'+':''}${c.baseStance.toFixed(2)}</span>`));
   });
-  $('populateBtn').disabled=false;
+  if(!$('populateBtn').textContent.includes('✓'))$('populateBtn').disabled=false;
 }
 
 /* debug handles (module scope hides these otherwise) */
@@ -946,14 +952,22 @@ function makeAdapter(label){
 
 const W={A:makeAdapter('baseline'),B:null,subs:[],timelineA:[],timelineB:[],feed:[],scrubbing:false,roundCache:{}};
 
-function unsubAll(){W.subs.forEach(u=>{try{u()}catch(e){}});W.subs=[]}
+function unsubAll(){
+  W.subs.forEach(u=>{try{u()}catch(e){}});W.subs=[];
+  if(typeof estimatesUnsub==='function'){try{estimatesUnsub()}catch(e){}estimatesUnsub=null}
+  if(typeof cohortUnsub==='function'){try{cohortUnsub()}catch(e){}cohortUnsub=null}
+}
 
 async function enterWarRoom(runId){
   unsubAll();
-  W.A=makeAdapter('baseline');W.B=null;W.timelineB=[];W.roundCache={};
-  H.runId=runId;
+  W.A=makeAdapter('baseline');W.B=null;W.timelineA=[];W.timelineB=[];W.feed=[];W.roundCache={};
+  W.scrubbing=false;W.scrubStances=null;$('liveBtn').style.display='none';
+  H.runId=runId;H.forkId=null;H.decision=null;
   S.sim=null;S.alt=null;S.scrubbed=false;  // legacy rAF loop stays dormant — cRaf owns the canvas
   exitForkUI();
+  // reject dead/foreign run ids before wiring anything
+  const probe=await client.query(api.serve.liveState,{runId}).catch(()=>null);
+  if(!probe){history.replaceState(null,'',location.pathname);showView('setup');return}
   showView('room');
   $('speedBtn').style.display='none';       // pacing is server-owned now
   sizeCanvases();
@@ -961,11 +975,13 @@ async function enterWarRoom(runId){
   client.query(api.serve.personaMeta,{runId}).then(meta=>{
     if(!meta)return;W.A.setMeta(meta);if(W.B&&!W.B.meta)W.B.setMeta(meta);
   });
-  location.hash='run='+runId;      // shareable: any browser/device with this URL mirrors live
+  history.replaceState(null,'','#run='+runId); // shareable URL, no history spam
   let forkWatch=false;
   W.subs.push(client.onUpdate(api.serve.liveState,{runId},st=>{if(!st)return;
     W.A.applyLive(st);cRenderFrame();
     if(!forkWatch){forkWatch=true;H.decisionDocId=st.run.decisionId;
+      client.query(api.serve.decision,{decisionId:st.run.decisionId}).then(d=>{
+        if(d){H.decision=d;$('rtitle').textContent=d.title}}).catch(()=>{});
       W.subs.push(client.onUpdate(api.serve.runsForDecision,{decisionId:st.run.decisionId},runs=>{
         const fork=runs.find(r=>r.parentRunId===H.runId&&!r.label.startsWith('__'));
         if(fork&&!W.B)attachFork(fork._id,fork.amendment?fork.amendment.label:fork.label);
@@ -973,8 +989,7 @@ async function enterWarRoom(runId){
   }));
   W.subs.push(client.onUpdate(api.serve.timeline,{runId},t=>{W.timelineA=t;cRenderCharts()}));
   W.subs.push(client.onUpdate(api.serve.feed,{runId},f=>{W.feed=f;cRenderFeed()}));
-  const d=DECISIONS[S.decisionIdx];
-  $('rtitle').textContent=d.title;$('rsub').textContent='grounded in real social posts · convex durable workflow';
+  $('rsub').textContent='grounded in real social posts · convex durable workflow';
 }
 function maybeAttachFork(){/* handled by runsForDecision sub */}
 
@@ -1068,12 +1083,12 @@ function cRenderFeed(){
       const cls=e.kind==='dissent'?'ev dissent':e.kind==='synthesis'?'ev beat':'ev';
       const d=el('div',cls,
         e.kind==='dissent'
-          ?`⚠ <span class="tag">DISSENT AGENT</span> ${e.text}`
+          ?`⚠ <span class="tag">DISSENT AGENT</span> ${esc(e.text)}`
           :e.kind==='synthesis'
-          ?`◆ <span class="tag" style="color:var(--warning)">ROUND ${e.round}</span> ${e.text}`
-          :`<div class="who"><b>${e.name}</b><span class="chip">${e.cohort}</span>
+          ?`◆ <span class="tag" style="color:var(--warning)">ROUND ${e.round}</span> ${esc(e.text)}`
+          :`<div class="who"><b>${esc(e.name)}</b><span class="chip">${esc(e.cohort)}</span>
              <span class="stance-chip" style="color:${stanceColor(e.stance)}">${e.stance>=0?'+':''}${e.stance.toFixed(2)}</span></div>
-            “${e.text}”<div style="font-size:10px;color:var(--ink-3);margin-top:3px">round ${e.round}</div>`);
+            “${esc(e.text)}”<div style="font-size:10px;color:var(--ink-3);margin-top:3px">round ${e.round}</div>`);
       feed.append(d);
     }else{
       const msg=e.kind==='fork'?`⑂ <b>TIMELINE FORKED</b> at round ${e.round} — ${e.payload.label}`
@@ -1087,30 +1102,38 @@ function cRenderFeed(){
 
 /* controls */
 $('enterRoomBtn').onclick=()=>enterWarRoom(H.runId);
-$('runBtn').onclick=async()=>{if(W.A.run&&W.A.run.status==='ready')await client.mutation(api.sim.start,{runId:H.runId})};
-$('resetBtn').onclick=()=>{unsubAll();showView('setup')};
+$('runBtn').onclick=async()=>{
+  if(!W.A.run||W.A.run.status!=='ready')return;
+  $('runBtn').disabled=true;                       // double-fire guard; sub re-renders state
+  await client.mutation(api.sim.start,{runId:H.runId}).catch(console.error);
+};
+$('resetBtn').onclick=()=>{unsubAll();history.replaceState(null,'',location.pathname);showView('setup')};
 $('interveneBtn').onclick=()=>{
   if(W.B){cToast('One fork per run — reset for a fresh branch.');return}
   const run=W.A.run;
   if(!run||run.round>=run.rounds-2){cToast('Too late to fork — fewer than 2 rounds left.');return}
   const list=$('amendList');list.innerHTML='';
-  const d=DECISIONS[S.decisionIdx];
-  const MODES=[['grandfather',d.amendments[0]],['soften',d.amendments[1]],['compensate',d.amendments[2]]];
+  const amendments=(H.decision&&H.decision.amendments&&H.decision.amendments.length?H.decision.amendments:DECISIONS[S.decisionIdx].amendments);
+  const MODES=['grandfather','soften','compensate'].slice(0,amendments.length).map((m,i)=>[m,amendments[i]]);
   MODES.forEach(([mode,a])=>{
     const b=el('button','amend',
       `<div><b>${a.label}</b><div style="color:var(--ink-3);font-size:11.5px;margin-top:2px">${a.detail}</div></div>
        <span class="fx"><b>fork</b>timeline</span>`);
-    b.onclick=async()=>{closeModals();await client.mutation(api.sim.fork,{runId:H.runId,label:a.label,mode})};
+    b.onclick=async()=>{closeModals();
+      if(W.B||W.forkInFlight)return;W.forkInFlight=true;
+      try{await client.mutation(api.sim.fork,{runId:H.runId,label:a.label,mode})}
+      finally{W.forkInFlight=false}};
     list.append(b);
   });
   $('interveneModal').classList.add('open');
 };
 $('customForkBtn').onclick=async()=>{
-  const t=$('amendCustom').value.trim();if(!t)return;
-  closeModals();await client.mutation(api.sim.fork,{runId:H.runId,label:t,mode:'custom'});
+  const t=$('amendCustom').value.trim();if(!t||W.B||W.forkInFlight)return;
+  closeModals();W.forkInFlight=true;
+  try{await client.mutation(api.sim.fork,{runId:H.runId,label:t,mode:'custom'})}
+  finally{W.forkInFlight=false}
 };
-function cToast(msg){W.feed.unshift({type:'event',kind:'sys',t:Date.now()});
-  const feed=$('feed');feed.prepend(el('div','ev sys',msg))}
+function cToast(msg){$('feed').prepend(el('div','ev sys',msg))}
 
 /* scrubber → historical rounds from convex */
 $('scrub').oninput=async()=>{
@@ -1122,7 +1145,7 @@ $('scrub').oninput=async()=>{
   if(W.scrubbing){
     const key=run._id+':'+r;
     if(!W.roundCache[key])W.roundCache[key]=await client.query(api.serve.roundStances,{runId:H.runId,round:r});
-    W.scrubStances=W.roundCache[key];
+    if(W.A.run&&W.A.run._id===run._id)W.scrubStances=W.roundCache[key]; // run switched mid-flight → drop
   }
 };
 $('liveBtn').onclick=()=>{W.scrubbing=false;$('liveBtn').style.display='none';
@@ -1146,12 +1169,13 @@ async function cNodeHit(e,cv,adapter,runId){
   const hist=info.hist,spark=hist.map((v,i)=>`${(i/Math.max(1,hist.length-1))*100},${(1-(v+1)/2)*30+2}`).join(' ');
   const s=hist[hist.length-1]??0;
   const pop=$('pop');
-  pop.innerHTML=`<div class="who"><b>${info.name}</b>
+  const safeUrl=info.seedPost&&/^https?:\/\//i.test(info.seedPost.url||'')?info.seedPost.url:null;
+  pop.innerHTML=`<div class="who"><b>${esc(info.name)}</b>
       <span class="stance-chip" style="color:${stanceColor(s)}">${s>=0?'+':''}${s.toFixed(2)}</span></div>
-    <span class="chip">${info.cohort}</span> ${info.inf>1.4?'<span class="chip">⭑ influencer</span>':''}
-    ${info.seedPost?`<div class="quote">“${info.seedPost.text}”</div>
-      <div style="font-size:10px;color:var(--ink-3)">grown from a real ${info.seedPost.platform} post by @${info.seedPost.author}
-      ${info.seedPost.url?` · <a href="${info.seedPost.url}" target="_blank" style="color:var(--sup)">source ↗</a>`:''}</div>`
+    <span class="chip">${esc(info.cohort)}</span> ${info.inf>1.4?'<span class="chip">⭑ influencer</span>':''}
+    ${info.seedPost?`<div class="quote">“${esc(info.seedPost.text)}”</div>
+      <div style="font-size:10px;color:var(--ink-3)">grown from a real ${esc(info.seedPost.platform)} post by @${esc(info.seedPost.author)}
+      ${safeUrl?` · <a href="${esc(safeUrl)}" target="_blank" style="color:var(--sup)">source ↗</a>`:''}</div>`
       :'<div class="quote" style="color:var(--ink-3)">synthetic persona (no seed post)</div>'}
     <div style="font-size:10px;letter-spacing:.1em;color:var(--ink-3);font-weight:700;margin-top:6px">STANCE · R0 → R${hist.length-1}</div>
     <svg viewBox="0 0 100 34" preserveAspectRatio="none">
@@ -1184,12 +1208,12 @@ let estimatesUnsub=null;
 $('verdictBtn').onclick=async()=>{
   const run=W.A.run;if(!run)return;
   const t=W.A.tally();if(!t.n)return;
-  const d=DECISIONS[S.decisionIdx];
-  // kick off silent estimate runs (idempotent enough for demo: newest batch wins)
-  client.mutation(api.sim.estimate,{runId:H.runId,amendments:[
-    {label:d.amendments[0].label,mode:'grandfather'},
-    {label:d.amendments[1].label,mode:'soften'},
-    {label:d.amendments[2].label,mode:'compensate'}]}).catch(console.error);
+  const amds=(H.decision&&H.decision.amendments&&H.decision.amendments.length?H.decision.amendments:DECISIONS[S.decisionIdx].amendments);
+  // fire estimates only if this run has none yet (each open otherwise respawns 4 runs)
+  const existing=await client.query(api.serve.estimates,{runId:H.runId}).catch(()=>null);
+  if(!existing)client.mutation(api.sim.estimate,{runId:H.runId,
+    amendments:['grandfather','soften','compensate'].slice(0,amds.length)
+      .map((m,i)=>({label:amds[i].label,mode:m}))}).catch(console.error);
   const st=await client.query(api.serve.liveState,{runId:H.runId});
   // biggest risk: most-negative-mean cohort, prefer one with hurt text
   const sums={},counts={};
@@ -1204,7 +1228,7 @@ $('verdictBtn').onclick=async()=>{
       <div class="d">approval · “${S.forkLabel}” · Δ ${Math.round(ta.sup/ta.n*100)-pctv(t.sup)>=0?'+':''}${Math.round(ta.sup/ta.n*100)-pctv(t.sup)} pts</div></div>`}
   $('verdictBody').innerHTML=`
     <h2>Verdict · round ${run.round}</h2>
-    <div class="sub">${d.title} — population of ${run.n} grown from real social posts</div>
+    <div class="sub">${esc((H.decision||DECISIONS[S.decisionIdx]).title)} — population of ${run.n} grown from real social posts</div>
     <div class="verdict-hero">
       <div class="vh"><div class="k">Predicted approval</div>
         <div class="v" style="color:var(--sup)">${pctv(t.sup)}%</div>
@@ -1215,8 +1239,8 @@ $('verdictBtn').onclick=async()=>{
       ${forkHtml}
     </div>
     <div class="risk"><span class="tag">BIGGEST RISK</span><br>
-      <b>${risk.name}</b> — mean stance ${risk.mean.toFixed(2)}.
-      ${risk.hurt||'The most opposed cohort in the population.'}</div>
+      <b>${esc(risk.name)}</b> — mean stance ${risk.mean.toFixed(2)}.
+      ${esc(risk.hurt||'The most opposed cohort in the population.')}</div>
     <div style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin-bottom:8px">
       Amendments · counterfactual flips (4 silent futures simulating…)</div>
     <div id="estimateRows"><div class="ev sys">running counterfactual timelines…</div></div>
@@ -1226,7 +1250,7 @@ $('verdictBtn').onclick=async()=>{
   estimatesUnsub=client.onUpdate(api.serve.estimates,{runId:H.runId},est=>{
     const box=document.getElementById('estimateRows');if(!box||!est)return;
     box.innerHTML=est.rows.map((r,i)=>`<div class="amend" style="cursor:default">
-      <div><b>${i+1}. ${r.label}</b></div>
+      <div><b>${i+1}. ${esc(r.label)}</b></div>
       <span class="fx"><b>${r.done?`≈${r.flips} flipped`:'…'}</b>${r.done?'projected':'simulating'}</span></div>`).join('')
       +(est.allDone?'':'<div style="font-size:11px;color:var(--ink-3);padding:4px 2px">silent scheduler runs — same durable engine, no voices</div>');
   });
@@ -1368,7 +1392,7 @@ function bindMap(cv,view){
     const chip=$('hoverChip');
     if(best>=0&&ad.meta){
       const cName=(ad.d.cohorts[ad.meta.cohortIdx[best]]||{}).name||'—';
-      chip.innerHTML=`<b>${ad.meta.names[best]}</b><span class="chip">${cName}</span>`;
+      chip.innerHTML=`<b>${esc(ad.meta.names[best])}</b><span class="chip">${esc(cName)}</span>`;
       chip.style.display='block';
       chip.style.left=(e.clientX+14)+'px';
       chip.style.top=(e.clientY-30)+'px';
@@ -1399,3 +1423,59 @@ document.querySelectorAll('.map-card').forEach(mc=>{
   mc.insertAdjacentHTML('beforeend','<span class="map-hint">SCROLL ZOOM · DRAG PAN · CLICK PERSONA</span>');
 });
 Object.assign(window,{mapView,cDrawMap});
+
+/* untrusted-content escaping (scraped posts, LLM output) */
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+/* hash router: #run=<id> is the one deep-linkable state; Back/paste/edit all work */
+window.addEventListener('hashchange',()=>{
+  const m=location.hash.match(/run=([a-z0-9]+)/);
+  if(m&&m[1]!==H.runId)enterWarRoom(m[1]);
+  else if(!m&&$('room').classList.contains('active')){unsubAll();showView('setup')}
+});
+
+/* ═══ landing dashboard: live workspace KPIs + recent runs + source health ═══ */
+client.onUpdate(api.ops.workspaceStats,{},st=>{
+  $('dash').style.display='grid';
+  $('kPosts').textContent=st.posts;
+  $('kRuns').textContent=st.runs;
+  $('kRunsD').textContent=`${st.completeRuns} complete${st.silentRuns?` · ${st.silentRuns} silent`:''}`;
+  $('kDecisions').textContent=st.decisions;
+  const box=$('srcHealth');
+  if(st.sources.length){
+    const max=Math.max(...st.sources.map(s2=>s2.count),1);
+    box.innerHTML='';
+    st.sources.slice(0,6).forEach(s2=>{
+      box.append(el('div','srch-row',
+        `<span style="width:74px">${esc(s2.platform)}</span>
+         <span class="bar"><i style="width:${Math.round(s2.count/max*100)}%"></i></span>
+         <span style="min-width:34px;text-align:right;font-variant-numeric:tabular-nums">${s2.count}</span>
+         <span class="chip" style="color:${s2.status==='failed'?'#f0a0a0':'var(--good)'}">${esc(s2.status)}</span>`));
+    });
+  }
+});
+client.onUpdate(api.ops.recentRuns,{},runs=>{
+  const box=$('runRows');if(!runs.length)return;
+  box.innerHTML='';
+  runs.forEach(r=>{
+    const row=el('div','run-row',
+      `<span class="t"><b>${r.forked?'⑂ ':''}${esc(r.label==='baseline'?r.title:r.label)}</b>${esc(r.title)}</span>
+       <span class="chip">${r.n}p</span>
+       <span class="chip" style="color:${r.status==='running'?'var(--good)':'var(--ink-2)'}">${r.status==='running'?'● live':esc(r.status)} · R${r.round}/${r.rounds}</span>
+       <button class="btn" data-open="${r._id}">Open</button>`);
+    row.querySelector('[data-open]').onclick=()=>enterWarRoom(r._id);
+    box.append(row);
+  });
+});
+client.action(api.ingest.llmInfo,{}).then(s2=>{
+  $('kLlm').textContent=s2.local?`local · ${s2.localModel}`:s2.gemini?'gemini flash':'deterministic';
+  $('kLlmD').textContent=s2.local?'ollama endpoint':s2.gemini?'cloud API':'seed-quote fallback';
+}).catch(()=>{});
+$('cleanupBtn').onclick=async e=>{
+  e.stopPropagation();
+  $('cleanupBtn').disabled=true;
+  try{const r=await client.mutation(api.ops.cleanup,{});
+    $('cleanupBtn').textContent=r.rescheduled?'🧹 cleaning…':'🧹 cleaned ✓';
+  }catch(err){console.error(err)}
+  setTimeout(()=>{$('cleanupBtn').textContent='🧹 Clean workspace';$('cleanupBtn').disabled=false},3000);
+};

@@ -10,8 +10,9 @@
 
 import type * as distill from "../distill.js";
 import type * as engine from "../engine.js";
-import type * as gemini from "../gemini.js";
 import type * as ingest from "../ingest.js";
+import type * as llm from "../llm.js";
+import type * as ops from "../ops.js";
 import type * as pipeline from "../pipeline.js";
 import type * as populate from "../populate.js";
 import type * as selftest from "../selftest.js";
@@ -28,8 +29,9 @@ import type {
 declare const fullApi: ApiFromModules<{
   distill: typeof distill;
   engine: typeof engine;
-  gemini: typeof gemini;
   ingest: typeof ingest;
+  llm: typeof llm;
+  ops: typeof ops;
   pipeline: typeof pipeline;
   populate: typeof populate;
   selftest: typeof selftest;
