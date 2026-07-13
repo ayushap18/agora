@@ -933,3 +933,13 @@ function renderCohorts(cs){
 
 /* debug handles (module scope hides these otherwise) */
 Object.assign(window,{S,H,client,api,showView,openHarness});
+
+/* L2+L3 populate wiring */
+$('populateBtn').onclick=async()=>{
+  $('populateBtn').disabled=true;$('populateBtn').textContent='③ Building network…';
+  try{
+    H.runId=await client.mutation(api.populate.run,{decisionId:H.decisionDocId,n:1800});
+    $('enterRoomBtn').disabled=false;
+    $('populateBtn').textContent='③ Network built ✓';
+  }catch(e){console.error(e);$('populateBtn').disabled=false;$('populateBtn').textContent='③ Build network — 1,800 personas'}
+};
