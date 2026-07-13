@@ -136,8 +136,23 @@ export const fetchReddit = internalAction({
           ts: (c.data.created_utc ?? 0) * 1000,
         }));
       }
-      // Reddit blocks unauthenticated JSON from many networks — fall back to
-      // Lemmy (open reddit-style federated API), keep the platform label honest.
+      // Reddit blocks unauthenticated JSON from many networks — try PullPush
+      // (free, no-auth Pushshift successor: REAL reddit comments), then Lemmy.
+      const pp = await fetch(
+        `https://api.pullpush.io/reddit/search/comment/?q=${encodeURIComponent(query)}&size=100`
+      ).catch(() => null);
+      if (pp?.ok) {
+        const pj = await pp.json();
+        const rows = (pj.data ?? []).map((c: any) => ({
+          platform: "reddit",
+          author: c.author ?? "unknown",
+          text: String(c.body ?? "").slice(0, 800),
+          score: c.score ?? 0,
+          url: c.permalink ? "https://reddit.com" + c.permalink : undefined,
+          ts: (c.created_utc ?? 0) * 1000,
+        })).filter((p: any) => p.text.length > 30);
+        if (rows.length) return rows;
+      }
       const l = await fetch(
         `https://lemmy.world/api/v3/search?q=${encodeURIComponent(query)}&type_=Comments&limit=50&sort=TopAll`
       );
@@ -225,9 +240,11 @@ export const sources = query({
 });
 
 export const recentPosts = query({
-  args: { limit: v.number() },
-  handler: async (ctx, { limit }) =>
-    (await ctx.db.query("posts").order("desc").take(Math.min(limit, 60))).map((p) => ({
+  args: { limit: v.number(), platform: v.optional(v.string()) },
+  handler: async (ctx, { limit, platform }) =>
+    (await ctx.db.query("posts").order("desc").take(platform ? 400 : Math.min(limit, 60)))
+      .filter((p) => !platform || p.platform === platform)
+      .slice(0, Math.min(limit, 60)).map((p) => ({
       platform: p.platform, author: p.author, text: p.text.slice(0, 180), score: p.score, url: p.url,
     })),
 });
@@ -265,8 +282,12 @@ export const insertScraped = mutation({
   },
 });
 
-// which LLM tier is live (shown as a chip in the harness console)
+// which LLM tiers are live (dashboard + settings page)
 export const llmInfo = action({
   args: {},
-  handler: async () => (await import("./llm")).llmStatus(),
+  handler: async (ctx) => {
+    const { getCfg, tiersOf } = await import("./llm");
+    const cfg = await getCfg(ctx);
+    return { tiers: tiersOf(cfg) };
+  },
 });

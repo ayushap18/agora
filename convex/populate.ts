@@ -31,9 +31,15 @@ export const run = mutation({
     const rng = mulberry32(theSeed);
     n = Math.max(200, Math.min(2000, n));
 
+    const st = (await ctx.db.query("settings").first()) ?? ({} as any);
     const runId = await ctx.db.insert("runs", {
       decisionId, label: "baseline", status: "ready", round: 0,
-      config: { n, rounds: 12, seed: theSeed, tickMs: 1500 },
+      config: {
+        n,
+        rounds: Math.max(6, Math.min(20, st.rounds ?? 12)),
+        seed: theSeed,
+        tickMs: Math.max(300, Math.min(5000, st.tickMs ?? 1500)),
+      },
     });
     await ctx.runMutation(internal.pipeline.log, {
       layer: "L2", status: "running", progress: 0.2, detail: `synthesizing ${n} personas…`, runId,

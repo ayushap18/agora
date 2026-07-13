@@ -119,6 +119,16 @@ export default defineSchema({
     kind: v.string(),
     payload: v.any(),
   }).index("by_run", ["runId"]),
+  settings: defineTable({
+    geminiKey: v.optional(v.string()),
+    localUrl: v.optional(v.string()),
+    localModel: v.optional(v.string()),
+    hfToken: v.optional(v.string()),
+    hfModel: v.optional(v.string()),
+    rounds: v.optional(v.number()),
+    tickMs: v.optional(v.number()),
+    council: v.optional(v.boolean()),
+  }),
   pipeline: defineTable({
     runId: v.optional(v.id("runs")),
     layer: v.string(),

@@ -77,7 +77,7 @@ export const run = action({
 
     // ── Gemini path ──
     const snippets = posts.slice(0, 120).map((p, i) => `[${i}] (${p.platform}, ▲${p.score}) ${p.text.slice(0, 220)}`).join("\n");
-    const g = await llmJson(
+    const g = await llmJson(ctx,
 `You are analyzing real social-media reactions to this decision:
 "${decision.title} — ${decision.body}"
 

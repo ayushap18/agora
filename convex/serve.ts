@@ -109,7 +109,7 @@ export const feed = query({
       .withIndex("by_run", (q) => q.eq("runId", runId)).order("desc").take(15);
     return [
       ...vs.map((x) => ({ t: x._creationTime, type: "voice", ...x })),
-      ...evs.map((x) => ({ t: x._creationTime, type: "event", ...x })),
+      ...evs.filter((x) => x.kind !== "council").map((x) => ({ t: x._creationTime, type: "event", ...x })),
     ].sort((a, b) => b.t - a.t).slice(0, 40);
   },
 });

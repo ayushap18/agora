@@ -186,6 +186,28 @@
     color:var(--ink-2);line-height:1.45;animation:rise .35s ease}
   .tick-post .who{font-size:10.5px;color:var(--ink-3);margin-bottom:2px;display:flex;gap:6px;align-items:center}
 
+  /* ── settings ── */
+  #settings{flex-direction:column;align-items:center;overflow-y:auto;padding:0 24px 60px}
+  .set-wrap{width:100%;max-width:760px}
+  .set-card{padding:18px;margin-bottom:14px;background:rgba(26,26,25,.85)}
+  .set-card h3{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-2);margin-bottom:4px}
+  .set-card .note{font-size:11.5px;color:var(--ink-3);margin-bottom:12px;line-height:1.5}
+  .set-row{display:grid;grid-template-columns:150px 1fr;align-items:center;gap:12px;margin-bottom:10px;font-size:13px}
+  .set-row label{color:var(--ink-2)}
+  .set-row input[type=text],.set-row input[type=password]{background:var(--surface-2);
+    border:1px solid var(--ring);border-radius:8px;color:var(--ink);font-family:inherit;
+    font-size:13px;padding:9px 12px;outline:none;width:100%}
+  .set-row input:focus{border-color:var(--sup)}
+  .set-row .saved{font-size:11px;color:var(--good);margin-top:3px}
+  .tab-bar{display:flex;gap:4px;padding:0 10px 8px}
+  .tab-bar button{padding:4px 11px;border-radius:7px;font-size:11.5px;color:var(--ink-3);
+    border:1px solid transparent}
+  .tab-bar button.on{color:var(--ink);background:var(--surface-3);border-color:var(--ring)}
+  .council-row{display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:center;
+    padding:9px 12px;border:1px solid var(--ring);border-radius:10px;margin-bottom:8px;
+    background:var(--surface-2);font-size:12.5px}
+  .council-row .acc{font-size:16px;font-weight:800;font-variant-numeric:tabular-nums}
+
   /* ── war room ─────────────────────────────────────────────────────────── */
   #room{flex-direction:column}
   .topbar{display:flex;align-items:center;gap:14px;padding:10px 18px;
@@ -313,7 +335,10 @@
   <canvas id="bgnet"></canvas>
   <div class="setup-nav">
     <div class="logo"><span class="mark">A</span>AGORA <small>· CONSEQUENCE ENGINE</small></div>
-    <span class="pill"><span class="dot"></span>research prototype</span>
+    <div style="display:flex;gap:10px;align-items:center">
+      <span class="pill"><span class="dot"></span>research prototype</span>
+      <button class="btn ghost" data-settings title="settings">⚙</button>
+    </div>
   </div>
   <div class="setup-hero">
     <div class="hero-badge">◈ Multi-agent consequence simulation</div>
@@ -400,6 +425,7 @@
     <div class="logo"><span class="mark">A</span>AGORA</div>
     <div class="title"><b>Harness console</b><span id="harnessSub">assembling the population from real social platforms</span></div>
     <span class="pill"><span class="dot live"></span>convex reactive</span>
+    <button class="btn ghost" data-settings title="settings">⚙</button>
     <button class="btn ghost" id="harnessBack">← decision</button>
     <button class="btn primary" id="enterRoomBtn" disabled>Enter war room ▶</button>
   </div>
@@ -418,6 +444,7 @@
       </div>
       <div class="card feed-card" style="flex:1;min-height:200px">
         <div class="card-h">Live corpus ticker <span class="chip">real posts, streaming in</span></div>
+        <div class="tab-bar" id="tickerTabs"></div>
         <div class="feed" id="postTicker"></div>
       </div>
     </div>
@@ -435,6 +462,42 @@
         <button class="btn" id="populateBtn" disabled>③ Build network — 1,800 personas</button>
         <span style="font-size:11px;color:var(--ink-3)">each layer streams progress to every open screen</span>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════ SETTINGS ════════ -->
+<div class="view" id="settings">
+  <div class="setup-nav set-wrap">
+    <div class="logo"><span class="mark">A</span>AGORA <small>· SETTINGS</small></div>
+    <button class="btn" id="settingsBack">← back</button>
+  </div>
+  <div class="set-wrap">
+    <div class="card set-card">
+      <h3>Models — bring your own keys</h3>
+      <div class="note">The voices/distill chain tries <b>local → Gemini → Hugging Face</b>, then falls back to
+        deterministic corpus quotes. Keys are stored in your <b>local</b> Convex deployment only.</div>
+      <div class="set-row"><label>Gemini API key</label><div><input type="password" id="setGemini" placeholder="AIza…"><div class="saved" id="savedGemini"></div></div></div>
+      <div class="set-row"><label>Local model URL</label><div><input type="text" id="setLocalUrl" placeholder="http://127.0.0.1:11434 (Ollama)"></div></div>
+      <div class="set-row"><label>Local model name</label><div><input type="text" id="setLocalModel" placeholder="llama3.2"></div></div>
+      <div class="set-row"><label>Hugging Face token</label><div><input type="password" id="setHf" placeholder="hf_…"><div class="saved" id="savedHf"></div></div></div>
+      <div class="set-row"><label>HF model</label><div><input type="text" id="setHfModel" placeholder="meta-llama/Llama-3.1-8B-Instruct"></div></div>
+      <div class="set-row"><label>Active tiers</label><div id="tierChips" style="display:flex;gap:6px;flex-wrap:wrap"><span class="chip">—</span></div></div>
+    </div>
+    <div class="card set-card">
+      <h3>Simulation</h3>
+      <div class="note">Applied to the next network you build.</div>
+      <div class="set-row"><label>Rounds <output id="roundsOut">12</output></label>
+        <input type="range" id="setRounds" min="6" max="20" step="1" value="12"></div>
+      <div class="set-row"><label>Tick speed <output id="tickOut">1500</output>ms</label>
+        <input type="range" id="setTick" min="300" max="4000" step="100" value="1500"></div>
+      <div class="set-row"><label>Model council</label>
+        <div><label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--ink-2)">
+          <input type="checkbox" id="setCouncil" checked> every configured model predicts the outcome; accuracy scored vs the engine</label></div></div>
+    </div>
+    <div style="display:flex;gap:12px;align-items:center">
+      <button class="btn primary" id="settingsSave">Save settings</button>
+      <span id="settingsMsg" style="font-size:12px;color:var(--ink-3)"></span>
     </div>
   </div>
 </div>

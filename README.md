@@ -42,6 +42,17 @@ gate: content-hash dedupe + ≥5-word quality filter, so re-runs never store gar
 optionally `LOCAL_LLM_MODEL llama3.2` — the voices/distill chain tries local → Gemini
 → deterministic fallback. The dashboard's LLM-tier tile shows which is live.
 
+**Settings (⚙ on the dashboard):** BYOK Gemini key · local model (Ollama URL+name) ·
+Hugging Face token+model (router.huggingface.co) · rounds (6–20) · tick speed ·
+model council toggle. Keys stay in the local Convex DB.
+
+**Model council:** at verdict time every configured model predicts the final
+approval% blind from the round-0 cohort brief; the engine's outcome is ground
+truth and each model gets an accuracy score (100 − |error|), plus a consensus.
+
+**Reddit chain:** reddit.json → PullPush (free Pushshift successor, real Reddit
+comments when up) → Lemmy — posts always labeled by their true origin.
+
 **Workspace hygiene:** `npx convex run ops:cleanup` (or the dashboard's Clean
 workspace button) — keeps the latest baseline per decision + its forks, cascade-deletes
 everything else in batches, sweeps orphans/duplicates/failed sources.

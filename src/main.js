@@ -866,13 +866,7 @@ client.onUpdate(api.ingest.sources,{},srcs=>{
       chip.style.color=s.status==='failed'?'#f0a0a0':s.status==='done'?'var(--good)':'var(--ink-2)'}
   });
 });
-client.onUpdate(api.ingest.recentPosts,{limit:30},posts=>{
-  const t=$('postTicker');if(!t)return;t.innerHTML='';
-  posts.forEach(p=>{
-    t.append(el('div','tick-post',
-      `<div class="who"><b>@${esc(p.author)}</b><span class="chip">${esc(p.platform)}</span>▲ ${p.score}</div>${esc(p.text)}`));
-  });
-});
+tickerUnsub=client.onUpdate(api.ingest.recentPosts,{limit:30},posts=>renderTickerPosts(posts));
 client.onUpdate(api.ingest.postCount,{},n=>{$('postTotal').textContent=n+' posts in corpus'});
 
 /* L1 distill wiring */
@@ -945,10 +939,21 @@ function makeAdapter(label){
       const adj=[];meta.adj.forEach(ch=>{
         for(let i=0;i+1<ch.offsets.length;i++)adj.push(ch.flatAdj.slice(ch.offsets[i],ch.offsets[i+1]))});
       this.adj=adj;this.count=meta.names.length;
+      // vertical bands sized by cohort share — dense cohorts get room to breathe
       const nc=Math.max(1,Math.max(...meta.cohortIdx)+1);
+      const counts=new Array(nc).fill(0);
+      meta.cohortIdx.forEach(ci=>counts[ci]++);
+      const total=this.count||1,MINB=.05;
+      const bands=counts.map(c2=>Math.max(MINB,c2/total));
+      const bsum=bands.reduce((a,b)=>a+b,0);
+      const starts=[];let acc=0;
+      for(const b of bands){starts.push(acc/bsum);acc+=b}
+      this.sizeK=Math.max(.5,Math.min(1.2,Math.sqrt(900/total)));
       this.personas=meta.cohortIdx.map((ci,i)=>({ci,inf:meta.inf[i],stance:0}));
-      this.pos=meta.cohortIdx.map((ci,i)=>({
-        y:(ci+.5)/nc+((hash01(i)-.5)*.72)/nc,x:0,jit:hash01(i*7+3)*Math.PI*2}));
+      this.pos=meta.cohortIdx.map((ci,i)=>{
+        const b=bands[ci]/bsum;
+        return {y:starts[ci]+b*.06+hash01(i)*b*.88,x:0,jit:hash01(i*7+3)*Math.PI*2};
+      });
     },
     applyLive(st){
       if(this.round!==st.run.round)this.edgesDirty=true;
@@ -1024,6 +1029,9 @@ function cRenderFrame(){
   $('statusDot').className='dot'+(run.status==='running'?' live':'');
   $('runBtn').innerHTML=run.status==='ready'?'▶ Run':run.status==='running'?'● LIVE':'▣ Done';
   $('runBtn').disabled=run.status!=='ready';
+  const lateFork=W.B||run.round>=run.rounds-2;
+  $('interveneBtn').disabled=!!lateFork;
+  $('interveneBtn').innerHTML=W.B?'⑂ Forked':lateFork?'⚡ Intervene (run ended)':'⚡ Intervene';
   if(!W.scrubbing){$('scrub').max=run.round;$('scrub').value=run.round;
     $('scrubLab').textContent=`round ${run.round} / ${run.round}`}
   cRenderTally();renderFactions();
@@ -1226,8 +1234,10 @@ $('verdictBtn').onclick=async()=>{
       .map((m,i)=>({label:amds[i].label,mode:m}))}).catch(console.error);
   const st=await client.query(api.serve.liveState,{runId:H.runId});
   // biggest risk: most-negative-mean cohort, prefer one with hurt text
+  // (cohortIdx lives in personaMeta since the payload slimming — regression fix)
+  const cidx=(W.A.meta&&W.A.meta.cohortIdx)||[];
   const sums={},counts={};
-  st.stances.forEach((s,i)=>{const c=st.cohortIdx[i];sums[c]=(sums[c]||0)+s;counts[c]=(counts[c]||0)+1});
+  st.stances.forEach((s,i)=>{const c=cidx[i]??0;sums[c]=(sums[c]||0)+s;counts[c]=(counts[c]||0)+1});
   const rows=st.cohorts.map(c=>({...c,mean:(sums[c.idx]||0)/(counts[c.idx]||1)})).sort((a,b)=>a.mean-b.mean);
   const risk=rows.find(r=>r.hurt)||rows[0];
   const pctv=x=>Math.round(x/t.n*100);
@@ -1254,8 +1264,12 @@ $('verdictBtn').onclick=async()=>{
     <div style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin-bottom:8px">
       Amendments · counterfactual flips (4 silent futures simulating…)</div>
     <div id="estimateRows"><div class="ev sys">running counterfactual timelines…</div></div>
+    <div style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin:14px 0 8px">
+      Model council · each model predicts the outcome blind</div>
+    <div id="councilRows"><div class="ev sys">convening the council…</div></div>
     <div class="foot"><button class="btn primary" data-close>Close</button></div>`;
   $('verdictModal').classList.add('open');
+  renderCouncil();
   if(estimatesUnsub)estimatesUnsub();
   estimatesUnsub=client.onUpdate(api.serve.estimates,{runId:H.runId},est=>{
     const box=document.getElementById('estimateRows');if(!box||!est)return;
@@ -1335,7 +1349,7 @@ function cDrawMap(cv,adapter,viewStances){
     const wy=wyOf(pos,Hp)+Math.cos(now/2300+pos.jit)*1.4*dpr;
     const sx=pos.wx*view.zoom+view.panX,sy=wy*view.zoom+view.panY;
     if(sx<-24||sx>Wp+24||sy<-24||sy>Hp+24){pos.x=-1e4;pos.sy=-1e4;continue}  // cull
-    const r=(2.2+p.inf*2.4)*dpr*rScale;
+    const r=(2.2+p.inf*2.4)*dpr*rScale*(adapter.sizeK||1);
     if(Math.abs(st[i])>.6){
       ctx.fillStyle=stanceColor(st[i],.16);
       ctx.beginPath();ctx.arc(sx,sy,r*2,0,7);ctx.fill();
@@ -1489,3 +1503,92 @@ $('cleanupBtn').onclick=async e=>{
   }catch(err){console.error(err)}
   setTimeout(()=>{$('cleanupBtn').textContent='🧹 Clean workspace';$('cleanupBtn').disabled=false},3000);
 };
+
+/* ═══ settings page ═══ */
+document.querySelectorAll('[data-settings]').forEach(b=>{b.onclick=()=>openSettings()});
+$('settingsBack').onclick=()=>showView('setup');
+async function openSettings(){
+  showView('settings');
+  const st=await client.query(api.settings.get,{}).catch(()=>null);
+  if(st){
+    $('savedGemini').textContent=st.geminiKey||'';
+    $('savedHf').textContent=st.hfToken||'';
+    $('setLocalUrl').value=st.localUrl||'';
+    $('setLocalModel').value=st.localModel||'';
+    $('setHfModel').value=st.hfModel||'';
+    $('setRounds').value=st.rounds;$('roundsOut').textContent=st.rounds;
+    $('setTick').value=st.tickMs;$('tickOut').textContent=st.tickMs;
+    $('setCouncil').checked=!!st.council;
+  }
+  refreshTiers();
+}
+function refreshTiers(){
+  client.action(api.ingest.llmInfo,{}).then(info=>{
+    const box=$('tierChips');box.innerHTML='';
+    if(!info.tiers.length){box.innerHTML='<span class="chip">deterministic fallback only</span>';return}
+    info.tiers.forEach(t=>box.append(el('span','chip',`● ${esc(t.label)}`)));
+    const k=$('kLlm');if(k){k.textContent=info.tiers[0].label;$('kLlmD').textContent=info.tiers.length>1?`+${info.tiers.length-1} more tier(s)`:'voices layer'}
+  }).catch(()=>{});
+}
+$('setRounds').oninput=e=>$('roundsOut').textContent=e.target.value;
+$('setTick').oninput=e=>$('tickOut').textContent=e.target.value;
+$('settingsSave').onclick=async()=>{
+  $('settingsSave').disabled=true;
+  try{
+    await client.mutation(api.settings.save,{
+      geminiKey:$('setGemini').value.trim()||undefined,
+      localUrl:$('setLocalUrl').value.trim(),
+      localModel:$('setLocalModel').value.trim(),
+      hfToken:$('setHf').value.trim()||undefined,
+      hfModel:$('setHfModel').value.trim(),
+      rounds:+$('setRounds').value,tickMs:+$('setTick').value,
+      council:$('setCouncil').checked});
+    $('setGemini').value='';$('setHf').value='';
+    $('settingsMsg').textContent='saved ✓ — applies to the next network build';
+    openSettings();
+  }catch(e){$('settingsMsg').textContent='save failed: '+e.message}
+  finally{$('settingsSave').disabled=false;setTimeout(()=>$('settingsMsg').textContent='',4000)}
+};
+
+/* ═══ source tabs on the corpus ticker ═══ */
+var tickerPlat=null,tickerUnsub=null; // var: assigned earlier in module eval (T3 ticker sub)
+const TICKER_TABS=[null,'reddit','lemmy','hn','bluesky','mastodon','x'];
+(function buildTabs(){
+  const bar=$('tickerTabs');if(!bar)return;
+  TICKER_TABS.forEach(p=>{
+    const b=el('button',p===null?'on':'',p===null?'all':p);
+    b.onclick=()=>{
+      tickerPlat=p;
+      [...bar.children].forEach(c=>c.classList.toggle('on',c===b));
+      if(tickerUnsub)tickerUnsub();
+      tickerUnsub=client.onUpdate(api.ingest.recentPosts,
+        p?{limit:30,platform:p}:{limit:30},renderTickerPosts);
+    };
+    bar.append(b);
+  });
+})();
+function renderTickerPosts(posts){
+  const t=$('postTicker');if(!t)return;t.innerHTML='';
+  if(!posts.length){t.innerHTML='<div style="padding:8px 12px;font-size:12px;color:var(--ink-3)">no posts from this source yet</div>';return}
+  posts.forEach(p=>{
+    t.append(el('div','tick-post',
+      `<div class="who"><b>@${esc(p.author)}</b><span class="chip">${esc(p.platform)}</span>▲ ${p.score}</div>${esc(p.text)}`));
+  });
+}
+
+/* ═══ model council card inside the verdict ═══ */
+async function renderCouncil(){
+  const box=document.getElementById('councilRows');if(!box)return;
+  const res=await client.action(api.council.run,{runId:H.runId}).catch(e=>({error:e.message}));
+  if(!box.isConnected)return;
+  if(res.error){box.innerHTML=`<div class="ev sys">${esc(res.error)}</div>`;return}
+  if(!res.rows||!res.rows.length){
+    box.innerHTML=`<div class="ev sys">${esc(res.note||'no model predictions — configure models in ⚙ Settings')}</div>`;return}
+  box.innerHTML=(res.consensus!==null?`<div style="font-size:12px;color:var(--ink-2);margin-bottom:8px">council consensus <b>${res.consensus}%</b> vs engine <b>${res.actual}%</b></div>`:'')
+    +res.rows.map(r=>`<div class="council-row">
+      <div><b>${esc(r.model)}</b><div style="color:var(--ink-3);font-size:11px;margin-top:2px">${esc(r.reason)}</div></div>
+      <span class="chip">predicted ${r.prediction}%</span>
+      <span class="acc" style="color:${r.accuracy>=90?'var(--good)':r.accuracy>=75?'var(--warning)':'var(--opp)'}">${r.accuracy}%</span>
+    </div>`).join('')
+    +(res.skipped&&res.skipped.length?`<div style="font-size:11px;color:var(--ink-3)">no valid answer: ${esc(res.skipped.join(', '))}</div>`:'');
+}

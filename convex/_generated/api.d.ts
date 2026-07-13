@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as council from "../council.js";
 import type * as distill from "../distill.js";
 import type * as engine from "../engine.js";
 import type * as ingest from "../ingest.js";
@@ -17,6 +18,7 @@ import type * as pipeline from "../pipeline.js";
 import type * as populate from "../populate.js";
 import type * as selftest from "../selftest.js";
 import type * as serve from "../serve.js";
+import type * as settings from "../settings.js";
 import type * as sim from "../sim.js";
 import type * as voices from "../voices.js";
 
@@ -27,6 +29,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  council: typeof council;
   distill: typeof distill;
   engine: typeof engine;
   ingest: typeof ingest;
@@ -36,6 +39,7 @@ declare const fullApi: ApiFromModules<{
   populate: typeof populate;
   selftest: typeof selftest;
   serve: typeof serve;
+  settings: typeof settings;
   sim: typeof sim;
   voices: typeof voices;
 }>;
