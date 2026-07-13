@@ -467,6 +467,16 @@
 
   /* status dots / pills stay pills (the one permitted pill geometry) */
   .pill,.chip,.fpill{border-radius:9999px}
+  #statusPill{display:none}   /* runBtn is the single status voice in the bar */
+  #pitwall{flex-direction:column}
+  .pit-scroll{flex:1;overflow-y:auto;padding-bottom:96px}
+  .nav-links a{white-space:nowrap}
+  .nav-links{gap:20px;margin-left:28px}
+  .nav-links a.cur{color:var(--ink)}
+  .nav-links a.cur::after{right:0}
+  .topbar{gap:10px;padding:0 20px}
+  .topbar .title{max-width:230px}
+  @media(max-width:1250px){.topbar .title span{display:none}}
   @media(max-width:900px){
     .hero-cinema{padding:64px 24px}
     .spec-band{grid-template-columns:1fr}
@@ -538,7 +548,6 @@
     <div style="display:flex;gap:10px;align-items:center">
       <span class="pill"><span class="dot"></span>research prototype</span>
       <a class="btn ghost gh-link" href="https://github.com/ayushap18/agora" target="_blank" rel="noopener" title="View source on GitHub"><svg width="16" height="16"><use href="#gh-icon"/></svg></a>
-      <button class="btn ghost" data-settings title="settings">⚙</button>
     </div>
   </div>
   <div class="hero-cinema">
@@ -559,16 +568,16 @@
     <div class="spec-cell"><div class="num"><em>40</em></div><div class="lab">Monte Carlo futures per verdict</div></div>
     <div class="spec-cell"><div class="num">0</div><div class="lab">Refreshes needed — every screen live</div></div>
   </div>
-  <div class="band" id="garageBand">
-    <div class="band-title">The Garage</div>
-    <h2>Pick a decision. <span class="rosso">Build the grid.</span></h2>
+</div>
+
+<!-- ════════ PIT WALL ════════ -->
+<div class="view" id="pitwall">
+  <div class="topbar">
+    <div class="logo"><span class="mark">A</span>AGORA</div>
+    <div class="title"><b>Pit wall</b><span>live telemetry · every screen in sync</span></div>
+    <span class="pill"><span class="dot live"></span>convex reactive</span>
   </div>
-  <div class="resume-banner" id="resumeBanner" style="margin:16px 64px">
-    <span>⏻</span><span style="flex:1">An interrupted run was found — the engine is durable.
-    Resume exactly where it stopped?</span>
-    <button class="btn" id="resumeBtn">Resume run</button>
-    <button class="btn ghost" id="discardBtn">Discard</button>
-  </div>
+  <div class="pit-scroll">
   <div class="band" id="pitwallBand" style="padding-top:64px">
     <div class="band-title">Pit Wall</div>
     <h2>Live telemetry.</h2>
@@ -589,6 +598,16 @@
       <div class="card-h">Source health</div>
       <div id="srcHealth"><div style="padding:8px 14px;font-size:12px;color:var(--ink-3)">no sources fetched yet</div></div>
     </div>
+  </div>
+  <div class="band" id="garageBand">
+    <div class="band-title">The Garage</div>
+    <h2>Pick a decision. <span class="rosso">Build the grid.</span></h2>
+  </div>
+  <div class="resume-banner" id="resumeBanner" style="margin:16px 64px">
+    <span>⏻</span><span style="flex:1">An interrupted run was found — the engine is durable.
+    Resume exactly where it stopped?</span>
+    <button class="btn" id="resumeBtn">Resume run</button>
+    <button class="btn ghost" id="discardBtn">Discard</button>
   </div>
   <div class="samples-row" id="samples" style="padding:0 64px"></div>
   <div class="setup-grid" style="padding:0 64px">
@@ -632,6 +651,8 @@
       <span class="fpill"><i>◉</i> live on every screen</span>
     </div>
   </div>
+
+  </div>
 </div>
 
 <!-- ════════ HARNESS CONSOLE ════════ -->
@@ -641,7 +662,6 @@
     <div class="title"><b>Harness console</b><span id="harnessSub">assembling the population from real social platforms</span></div>
     <span class="pill"><span class="dot live"></span>convex reactive</span>
     <a class="btn ghost gh-link" href="https://github.com/ayushap18/agora" target="_blank" rel="noopener" title="View source on GitHub"><svg width="16" height="16"><use href="#gh-icon"/></svg></a>
-    <button class="btn ghost" data-settings title="settings">⚙</button>
     <button class="btn ghost" id="harnessBack">← decision</button>
     <button class="btn primary" id="enterRoomBtn" disabled>Enter war room ▶</button>
   </div>

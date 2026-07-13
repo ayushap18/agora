@@ -1338,30 +1338,38 @@ function toggleTheme(){
   else{root.dataset.theme='light';localStorage.setItem('agora-theme','light')}
   document.querySelectorAll('.theme-toggle').forEach(b=>{b.textContent=root.dataset.theme==='light'?'◐':'◑'});
 }
-// one nav strip, injected into every top bar — one-click access everywhere
+// nav: minimal on the landing (cinema stays clean); full strip on inner pages,
+// current page marked, one Settings entry total.
+const NAV=[['Home','setup',()=>{unsubAll();history.replaceState(null,'',location.pathname);showView('setup')}],
+  ['Pit wall','pitwall',()=>showView('pitwall')],
+  ['Harness','harness',()=>openHarness()],
+  ['War room','room',()=>{if(H.runId)enterWarRoom(H.runId)}],
+  ['Settings','settings',()=>openSettings()]];
 (function navs(){
-  const LINKS=[['Home',()=>{unsubAll();history.replaceState(null,'',location.pathname);showView('setup')}],
-    ['Harness',()=>openHarness()],
-    ['War room',()=>{if(H.runId)enterWarRoom(H.runId)},'needs-run'],
-    ['Settings',()=>openSettings()]];
-  document.querySelectorAll('#setup .setup-nav, #harness .topbar, #room .topbar, #settings .setup-nav').forEach(bar=>{
+  document.querySelectorAll('#pitwall .topbar, #harness .topbar, #room .topbar, #settings .setup-nav').forEach(bar=>{
     const wrap=el('nav','nav-links');
-    LINKS.forEach(([label,go,cls])=>{
+    NAV.forEach(([label,view,go])=>{
       const a=el('a','',label);
-      if(cls)a.dataset.gate=cls;
+      a.dataset.view=view;
+      if(view==='room')a.dataset.gate='needs-run';
       a.onclick=e=>{e.preventDefault();go()};
       wrap.append(a);
     });
     const logo=bar.querySelector('.logo');
     logo?logo.after(wrap):bar.prepend(wrap);
+  });
+  document.querySelectorAll('#setup .setup-nav, #pitwall .topbar, #harness .topbar, #room .topbar, #settings .setup-nav').forEach(bar=>{
     const t=el('button','btn ghost theme-toggle','◑');
     t.title='theme';t.onclick=toggleTheme;
     bar.append(t);
   });
   if(document.documentElement.dataset.theme==='light')
     document.querySelectorAll('.theme-toggle').forEach(b=>b.textContent='◐');
-  setInterval(()=>{document.querySelectorAll('[data-gate="needs-run"]')
-    .forEach(a=>a.classList.toggle('dis',!H.runId))},1500);
+  setInterval(()=>{
+    document.querySelectorAll('[data-gate="needs-run"]').forEach(a=>a.classList.toggle('dis',!H.runId));
+    const cur=document.querySelector('.view.active')?.id;
+    document.querySelectorAll('.nav-links a').forEach(a=>a.classList.toggle('cur',a.dataset.view===cur));
+  },800);
 })();
 // tachometer: sweep on load, redline pulse on hover of the primary CTA
 (function tach(){
@@ -1375,10 +1383,9 @@ function toggleTheme(){
       setTimeout(()=>ticks.forEach((x,i)=>setTimeout(()=>x.classList.remove('lit'),i*12)),400);
       $('tachLabel').textContent='Engine warm · pick a decision below';}
   },28);
-  const glide=id=>{$('setup').scrollTop=$(id).offsetTop-72};   // css scroll-behavior animates
   $('heroStart').onclick=()=>{
     shudder(document.querySelector('.hero-cinema h1'));
     ticks.forEach((x,i)=>setTimeout(()=>x.classList.add('lit'),i*7));
-    setTimeout(()=>{glide('garageBand');ticks.forEach(x=>x.classList.remove('lit'))},420)};
-  $('heroRuns').onclick=()=>glide('pitwallBand');
+    setTimeout(()=>{crank(()=>showView('pitwall'));ticks.forEach(x=>x.classList.remove('lit'))},380)};
+  $('heroRuns').onclick=()=>showView('pitwall');
 })();
