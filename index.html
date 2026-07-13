@@ -475,6 +475,56 @@
     .nav-links{display:none}
   }
 
+
+  /* ═══ IGNITION SEQUENCE ═══ */
+  #ignition{position:fixed;inset:0;z-index:100;display:none;background:transparent;pointer-events:none}
+  #ignition.on{display:block;pointer-events:auto}
+  #ignition .door{position:absolute;left:0;right:0;height:50.5%;background:#181818;transition:transform .28s cubic-bezier(.7,0,.3,1)}
+  #ignition .door.top{top:0}#ignition .door.bot{bottom:0}
+  #ignition.doors-open .door.top{transform:translateY(-101%)}
+  #ignition.doors-open .door.bot{transform:translateY(101%)}
+  .ign-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;
+    justify-content:center;gap:22px;transition:opacity .2s}
+  #ignition.doors-open .ign-center{opacity:0}
+  .ign-mark{width:44px;height:44px;background:var(--rosso);color:#fff;display:grid;place-items:center;
+    font-weight:700;font-size:20px}
+  .rpm{display:flex;gap:4px;align-items:flex-end}
+  .rpm i{width:4px;height:14px;background:#303030;transition:background .05s}
+  .rpm i:nth-child(8n){height:24px}
+  .rpm i.lit{background:var(--rosso)}
+  #ignition.fire .rpm i{background:var(--rosso);box-shadow:0 0 12px rgba(218,41,28,.7)}
+  #ignition.fire .door{background:#1d1717}
+  #ignition.shake .ign-center{animation:igshake .28s linear}
+  @keyframes igshake{0%,100%{transform:none}25%{transform:translate(1px,-1px)}50%{transform:translate(-1px,1px)}75%{transform:translate(1px,1px)}}
+  .ign-caption{font-size:11px;font-weight:600;letter-spacing:2.4px;text-transform:uppercase;color:#969696;min-height:16px}
+  .lights{display:none;gap:14px}
+  .lights i{width:26px;height:26px;border-radius:50%;background:#303030;border:1px solid #3c3c3c;transition:background .08s}
+  .lights i.lit{background:var(--rosso);box-shadow:0 0 16px rgba(218,41,28,.8)}
+  .shudder{animation:igshake .34s linear}
+  @media (prefers-reduced-motion: reduce){#ignition{display:none!important}}
+
+  /* ═══ ASSEMBLY BAY (harness = engineering drawing) ═══ */
+  #harness .main{background:
+    repeating-linear-gradient(0deg,transparent,transparent 7px,rgba(150,150,150,.045) 7px,rgba(150,150,150,.045) 8px),
+    repeating-linear-gradient(90deg,transparent,transparent 7px,rgba(150,150,150,.045) 7px,rgba(150,150,150,.045) 8px)}
+  [data-theme="light"] #harness .main{background:
+    repeating-linear-gradient(0deg,transparent,transparent 7px,rgba(24,24,24,.05) 7px,rgba(24,24,24,.05) 8px),
+    repeating-linear-gradient(90deg,transparent,transparent 7px,rgba(24,24,24,.05) 7px,rgba(24,24,24,.05) 8px)}
+  #pipeRail{position:relative;padding-left:10px}
+  #pipeRail::before{content:"";position:absolute;left:14px;top:8px;bottom:8px;width:2px;background:var(--surface-3)}
+  .fuel-fill{position:absolute;left:14px;top:8px;width:2px;background:var(--rosso);
+    transition:height .6s ease;box-shadow:0 0 8px rgba(218,41,28,.5)}
+  .pipe-row{position:relative;margin-left:14px}
+  .pipe-row .lyr{border-radius:0;font-size:9px;min-width:34px}
+  .pipe-row .part{font-size:9px;letter-spacing:1.2px;color:var(--ink-3);text-transform:uppercase;display:block}
+  .pipe-row.running .lyr{color:var(--rosso);border-color:rgba(218,41,28,.6);animation:pulse 1.2s infinite}
+  .pipe-row.done .lyr{color:var(--ink);border-color:var(--baseline)}
+  .pipe-row.done .chip{transform:rotate(-3deg);border:1px solid var(--ink-3);background:transparent;
+    text-transform:uppercase;letter-spacing:1px;font-size:9px;border-radius:0}
+  .pipe-row.failed .chip{border:1px solid rgba(218,41,28,.7);color:#e8968f;transform:rotate(-3deg);border-radius:0}
+  .src-row{border-bottom:1px dashed var(--baseline)}
+  .src-row .plat{text-transform:uppercase;letter-spacing:1px;font-size:11px}
+
 </style>
 </head>
 <body>

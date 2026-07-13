@@ -1,4 +1,5 @@
 import { client, api } from './convexClient.js';
+import { crank, lightsOut, goLights, shudder } from './ignition.js';
 
 'use strict';
 /* ═══════════════════════════ deterministic core ═══════════════════════════
@@ -160,7 +161,7 @@ function groundFile(f){
 }
 
 /* ─── boot a run ─── */
-$('materializeBtn').onclick=()=>openHarness();
+$('materializeBtn').onclick=()=>{openHarness();crank(()=>{});};
 
 /* fork view chrome (shared by the convex fork path) */
 function enterForkUI(){
@@ -324,17 +325,21 @@ $('xImportBtn').onclick=async()=>{
 
 /* live subscriptions — every open screen sees the same pipeline */
 client.onUpdate(api.pipeline.latest,{},rows=>{
-  const rail=$('pipeRail');rail.innerHTML='';
+  const rail=$('pipeRail');rail.innerHTML='<div class="fuel-fill"></div>';
   const LAYERS=['L0','L1','L1.5','L2','L3','L4','L5','L6'];
+  const PARTS=['INTAKE','INJECTION','MIXTURE','BLOCK','DRIVETRAIN','COMBUSTION','EXHAUST NOTE','TELEMETRY'];
   const byLayer=Object.fromEntries(rows.map(r=>[r.layer,r]));
-  LAYERS.forEach(l=>{
+  let done=0;
+  LAYERS.forEach((l,i)=>{
     const r=byLayer[l];
+    if(r&&r.status==='done')done=i+1;
     const row=el('div','pipe-row '+(r?r.status:''),
       `<span class="lyr">${l}</span>
-       <span class="det">${r?r.detail:['ingest','distill','embed','populate','graph','simulate','voices','serve'][LAYERS.indexOf(l)]}</span>
+       <span class="det"><span class="part">AG-${l} · ${PARTS[i]}</span>${r?esc(r.detail):'awaiting torque'}</span>
        <span class="chip">${r?r.status:'idle'}</span>`);
     rail.append(row);
   });
+  rail.querySelector('.fuel-fill').style.height=`calc((100% - 16px) * ${done/LAYERS.length})`;
 });
 client.onUpdate(api.ingest.sources,{},srcs=>{
   srcs.forEach(s=>{
@@ -412,7 +417,7 @@ function makeAdapter(label){
       for(const v of s){if(v>.12)sup++;else if(v<-.12)opp++}
       return{sup,opp,neu:s.length-sup-opp,n:s.length}},
     setMeta(meta){                            // one-time static payload (names/cohorts/inf/graph)
-      this.meta=meta;
+      this.meta=meta;this.bornAt=performance.now();
       const adj=[];meta.adj.forEach(ch=>{
         for(let i=0;i+1<ch.offsets.length;i++)adj.push(ch.flatAdj.slice(ch.offsets[i],ch.offsets[i+1]))});
       this.adj=adj;this.count=meta.names.length;
@@ -503,11 +508,11 @@ function attachFork(forkId,label){
 /* render pipeline (replaces legacy renderAll for the convex path) */
 function cRenderFrame(){
   const run=W.A.run;if(!run)return;
-  $('roundPill').textContent=`ROUND ${run.round}/${run.rounds}`;
+  $('roundPill').textContent=`LAP ${run.round}/${run.rounds}`;
   $('popChip').textContent=`${run.n} personas · live graph`;
   $('statusTxt').textContent=run.status==='running'?'LIVE':run.status.toUpperCase();
   $('statusDot').className='dot'+(run.status==='running'?' live':'');
-  $('runBtn').innerHTML=run.status==='ready'?'▶ Run':run.status==='running'?'● LIVE':'▣ Done';
+  $('runBtn').innerHTML=run.status==='ready'?'Lights out · GO':run.status==='running'?'● LIVE':'▣ Finished';
   $('runBtn').disabled=run.status!=='ready';
   const lateFork=W.B||run.round>=run.rounds-2;
   $('interveneBtn').disabled=!!lateFork;
@@ -599,10 +604,11 @@ function cRenderFeed(){
 }
 
 /* controls */
-$('enterRoomBtn').onclick=()=>enterWarRoom(H.runId);
+$('enterRoomBtn').onclick=()=>{enterWarRoom(H.runId);lightsOut(()=>{});};
 $('runBtn').onclick=async()=>{
   if(!W.A.run||W.A.run.status!=='ready')return;
   $('runBtn').disabled=true;                       // double-fire guard; sub re-renders state
+  goLights(()=>{});                                // F1 start: five lights out, GO
   await client.mutation(api.sim.start,{runId:H.runId}).catch(console.error);
 };
 $('resetBtn').onclick=()=>{unsubAll();history.replaceState(null,'',location.pathname);showView('setup')};
@@ -696,12 +702,14 @@ cvB.addEventListener('click',e=>{if(W.B&&W.B.run)cNodeHit(e,cvB,W.B,H.forkId)});
 
 /* convex-era frame loop: reuse drawMap with adapters + scrub cache */
 (function cRaf(){
-  if($('room').classList.contains('active')&&W.A.run){
-    cDrawMap(cvA,W.A,W.scrubbing?W.scrubStances:null);
-    if(W.B&&W.B.run)cDrawMap(cvB,W.B,null);
-    if(!W.scrubbing)cRenderTally();
-  }
-  requestAnimationFrame(cRaf);
+  try{
+    if($('room').classList.contains('active')&&W.A.run){
+      cDrawMap(cvA,W.A,W.scrubbing?W.scrubStances:null);
+      if(W.B&&W.B.run)cDrawMap(cvB,W.B,null);
+      if(!W.scrubbing)cRenderTally();
+    }
+  }catch(e){console.error('frame error (loop survives):',e)}
+  requestAnimationFrame(cRaf);   // schedule OUTSIDE try — one bad frame can't kill the loop
 })();
 Object.assign(window,{W,enterWarRoom});
 
@@ -869,7 +877,9 @@ function cDrawMap(cv,adapter,viewStances){
     const wy=wyOf(pos,Hp)+Math.cos(now/2300+pos.jit)*1.4*dpr;
     const sx=pos.wx*view.zoom+view.panX,sy=wy*view.zoom+view.panY;
     if(sx<-24||sx>Wp+24||sy<-24||sy>Hp+24){pos.x=-1e4;pos.sy=-1e4;continue}  // cull
-    const r=(2.2+p.inf*2.4)*dpr*rScale*(adapter.sizeK||1);
+    const born=adapter.bornAt?Math.max(0,Math.min(1,(now-adapter.bornAt-i*0.35)/320)):1;
+    if(born===0){pos.x=-1e4;pos.sy=-1e4;continue}
+    const r=(2.2+p.inf*2.4)*dpr*rScale*(adapter.sizeK||1)*born;
     if(Math.abs(st[i])>.6){
       ctx.fillStyle=stanceColor(st[i],.16);
       ctx.beginPath();ctx.arc(sx,sy,r*2,0,7);ctx.fill();
@@ -1366,7 +1376,9 @@ function toggleTheme(){
       $('tachLabel').textContent='Engine warm · pick a decision below';}
   },28);
   const glide=id=>{$('setup').scrollTop=$(id).offsetTop-72};   // css scroll-behavior animates
-  $('heroStart').onclick=()=>{glide('garageBand');
-    ticks.slice(0,12).forEach((x,i)=>setTimeout(()=>x.classList.add('lit'),i*20))};
+  $('heroStart').onclick=()=>{
+    shudder(document.querySelector('.hero-cinema h1'));
+    ticks.forEach((x,i)=>setTimeout(()=>x.classList.add('lit'),i*7));
+    setTimeout(()=>{glide('garageBand');ticks.forEach(x=>x.classList.remove('lit'))},420)};
   $('heroRuns').onclick=()=>glide('pitwallBand');
 })();
