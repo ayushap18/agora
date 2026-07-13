@@ -1,0 +1,32 @@
+{
+  "name": "hackbriven",
+  "version": "1.0.0",
+  "description": "> Every decision gets debated after it ships. Agora lets you watch the debate before.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ayushap18/agora.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/ayushap18/agora/issues"
+  },
+  "homepage": "https://github.com/ayushap18/agora#readme",
+  "dependencies": {
+    "@convex-dev/rate-limiter": "^0.3.2",
+    "@convex-dev/workflow": "^0.4.4",
+    "@convex-dev/workpool": "^0.4.7",
+    "convex": "^1.42.1"
+  },
+  "devDependencies": {
+    "vite": "^8.1.4"
+  }
+}
