@@ -899,3 +899,37 @@ client.onUpdate(api.ingest.recentPosts,{limit:30},posts=>{
   });
 });
 client.onUpdate(api.ingest.postCount,{},n=>{$('postTotal').textContent=n+' posts in corpus'});
+
+/* L1 distill wiring */
+let cohortUnsub=null;
+$('distillBtn').onclick=async()=>{
+  const d=DECISIONS[S.decisionIdx];
+  $('distillBtn').disabled=true;$('distillBtn').textContent='② Distilling…';
+  try{
+    H.decisionDocId=await client.mutation(api.distill.seedDecision,{
+      title:d.title,body:$('decisionText').value.trim()||d.text,
+      amendments:d.amendments.map(a=>({label:a.label,detail:a.detail,fx:{}}))});
+    if(cohortUnsub)cohortUnsub();
+    cohortUnsub=client.onUpdate(api.distill.listCohorts,{decisionId:H.decisionDocId},renderCohorts);
+    await client.action(api.distill.run,{decisionId:H.decisionDocId});
+  }catch(e){console.error(e)}
+  $('distillBtn').disabled=false;$('distillBtn').textContent='② Distill cohorts from corpus';
+};
+const COHORT_COLORS=['var(--c1)','var(--c2)','var(--c3)','var(--c4)','var(--c5)','var(--c6)','var(--c7)','var(--c8)'];
+function renderCohorts(cs){
+  H.cohorts=cs;
+  $('cohortChip').textContent=cs.length?cs.length+' cohorts':'—';
+  const box=$('cohortList');box.innerHTML='';
+  if(!cs.length){box.innerHTML='<div style="padding:6px 14px;font-size:12px;color:var(--ink-3)">fetch sources, then distill</div>';return}
+  cs.forEach(c=>{
+    box.append(el('div','cohort-row',
+      `<i style="width:9px;height:9px;border-radius:3px;background:${COHORT_COLORS[c.idx%8]};flex:none"></i>
+       <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.name}</span>
+       <span class="bar" style="max-width:70px"><i style="width:${Math.round(c.share*100)}%;background:${COHORT_COLORS[c.idx%8]}"></i></span>
+       <span class="chip" style="color:${c.baseStance<-0.15?'var(--opp)':c.baseStance>0.15?'var(--sup)':'var(--ink-2)'}">${c.baseStance>=0?'+':''}${c.baseStance.toFixed(2)}</span>`));
+  });
+  $('populateBtn').disabled=false;
+}
+
+/* debug handles (module scope hides these otherwise) */
+Object.assign(window,{S,H,client,api,showView,openHarness});

@@ -8,6 +8,8 @@
  * @module
  */
 
+import type * as distill from "../distill.js";
+import type * as gemini from "../gemini.js";
 import type * as ingest from "../ingest.js";
 import type * as pipeline from "../pipeline.js";
 
@@ -18,6 +20,8 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  distill: typeof distill;
+  gemini: typeof gemini;
   ingest: typeof ingest;
   pipeline: typeof pipeline;
 }>;
