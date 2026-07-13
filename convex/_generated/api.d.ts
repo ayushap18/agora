@@ -15,6 +15,7 @@ import type * as embed from "../embed.js";
 import type * as engine from "../engine.js";
 import type * as ingest from "../ingest.js";
 import type * as llm from "../llm.js";
+import type * as mcpaths from "../mcpaths.js";
 import type * as monitor from "../monitor.js";
 import type * as ops from "../ops.js";
 import type * as pipeline from "../pipeline.js";
@@ -40,6 +41,7 @@ declare const fullApi: ApiFromModules<{
   engine: typeof engine;
   ingest: typeof ingest;
   llm: typeof llm;
+  mcpaths: typeof mcpaths;
   monitor: typeof monitor;
   ops: typeof ops;
   pipeline: typeof pipeline;

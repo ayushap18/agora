@@ -13,6 +13,37 @@ export function tallyOf(values: number[]) {
   return { sup, opp, neu: values.length - sup - opp, n: values.length };
 }
 
+// The one true tick: shared by the durable workflow and the MC path simulator.
+export function stepStances(
+  prev: number[],
+  acs: { flatAdj: number[]; offsets: number[] }[],
+  cohortIdx: number[], inf: number[], stub: number[],
+  cohortVol: number[], cohortName: string[],
+  amendFx: Record<string, number> | null,
+  rng: () => number,
+): number[] {
+  const n = prev.length;
+  const next = new Array<number>(n);
+  for (let i = 0; i < n; i++) {
+    const chunk = acs[(i / CHUNK) | 0], local = i % CHUNK;
+    const lo = chunk.offsets[local], hi = chunk.offsets[local + 1];
+    let acc = 0, wsum = 0;
+    for (let e = lo; e < hi; e++) {
+      const j = chunk.flatAdj[e];
+      const w = inf[j] * Math.max(0.08, 1 - Math.abs(prev[j] - prev[i]) * 0.75);
+      acc += w * (prev[j] - prev[i]); wsum += w;
+    }
+    const social = wsum ? (acc / wsum) * SOCIAL * (1 - stub[i]) : 0;
+    const harden = HARDEN * Math.sign(prev[i]) * Math.abs(prev[i]);
+    let shift = 0;
+    const cn = cohortName[cohortIdx[i]];
+    if (amendFx && cn && amendFx[cn]) shift += amendFx[cn] / AMEND_DIV;
+    const noise = (rng() - 0.5) * 0.05 * (cohortVol[cohortIdx[i]] ?? 0.8);
+    next[i] = Math.max(-1, Math.min(1, prev[i] + social + harden + shift + noise));
+  }
+  return next;
+}
+
 async function loadRun(ctx: any, runId: any) {
   const run = await ctx.db.get(runId);
   if (!run) throw new Error("run not found");
@@ -49,25 +80,10 @@ export const tickRound = internalMutation({
     const stub = pcs.flatMap((c: any) => c.stub);
     const rng = mulberry32(run.config.seed + round * 7919);
 
-    const next = new Array<number>(n);
-    for (let i = 0; i < n; i++) {
-      const chunk = acs[(i / CHUNK) | 0], local = i % CHUNK;
-      const lo = chunk.offsets[local], hi = chunk.offsets[local + 1];
-      let acc = 0, wsum = 0;
-      for (let e = lo; e < hi; e++) {
-        const j = chunk.flatAdj[e];
-        // bounded confidence: distant opinions barely pull
-        const w = inf[j] * Math.max(0.08, 1 - Math.abs(prev[j] - prev[i]) * 0.75);
-        acc += w * (prev[j] - prev[i]); wsum += w;
-      }
-      const social = wsum ? (acc / wsum) * SOCIAL * (1 - stub[i]) : 0;
-      const harden = HARDEN * Math.sign(prev[i]) * Math.abs(prev[i]);
-      let shift = 0;
-      const cName = cohorts[cohortIdx[i]]?.name;
-      if (run.amendment && cName && run.amendment.fx[cName]) shift += run.amendment.fx[cName] / AMEND_DIV;
-      const noise = (rng() - 0.5) * 0.05 * (cohorts[cohortIdx[i]]?.vol ?? 0.8);
-      next[i] = Math.max(-1, Math.min(1, prev[i] + social + harden + shift + noise));
-    }
+    const next = stepStances(
+      prev, acs, cohortIdx, inf, stub,
+      cohorts.map((c: any) => c.vol ?? 0.8), cohorts.map((c: any) => c.name),
+      run.amendment?.fx ?? null, rng);
 
     // write stance chunks + per-round stats + factions + run round
     for (let c = 0; c < pcs.length; c++) {

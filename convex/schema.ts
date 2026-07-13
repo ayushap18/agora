@@ -132,6 +132,11 @@ export default defineSchema({
     y: v.number(),
     ts: v.number(),
   }).index("by_run", ["runId"]),
+  mcPaths: defineTable({
+    runId: v.id("runs"),
+    samples: v.number(),
+    paths: v.array(v.array(v.number())), // K paths x (rounds+1) approval pcts
+  }).index("by_run", ["runId"]),
   calibrations: defineTable({
     runId: v.id("runs"),
     label: v.string(),

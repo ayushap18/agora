@@ -1240,8 +1240,8 @@ $('verdictBtn').onclick=async()=>{
   const amds=(H.decision&&H.decision.amendments&&H.decision.amendments.length?H.decision.amendments:DECISIONS[S.decisionIdx].amendments);
   // fire estimates only if this run has none yet (each open otherwise respawns 4 runs)
   const existing=await client.query(api.serve.estimates,{runId:H.runId}).catch(()=>null);
-  const conf0=await client.query(api.serve.confidence,{runId:H.runId}).catch(()=>null);
-  if(!conf0)client.mutation(api.sim.monteCarlo,{runId:H.runId,samples:5}).catch(console.error);
+  const conf0=await client.query(api.mcpaths.get,{runId:H.runId}).catch(()=>null);
+  if(!conf0)client.action(api.mcpaths.simulate,{runId:H.runId,samples:40}).catch(console.error);
   if(!existing)client.mutation(api.sim.estimate,{runId:H.runId,
     amendments:['grandfather','soften','compensate'].slice(0,amds.length)
       .map((m,i)=>({label:amds[i].label,mode:m}))}).catch(console.error);
@@ -1272,6 +1272,9 @@ $('verdictBtn').onclick=async()=>{
         <div class="d">${W.A.factions.filter(f=>f.side==='opp').length||'no'} organized opposing faction(s)</div></div>
       ${forkHtml}
     </div>
+    <div style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin:2px 0 6px">
+      Monte Carlo · <span id="fanMeta">simulating alternate futures…</span></div>
+    <canvas id="mcFan" style="width:100%;height:170px;border:1px solid var(--ring);border-radius:10px;background:var(--surface-2);margin-bottom:14px"></canvas>
     <div class="risk"><span class="tag">BIGGEST RISK</span><br>
       <b>${esc(risk.name)}</b> — mean stance ${risk.mean.toFixed(2)}.
       ${esc(risk.hurt||'The most opposed cohort in the population.')}
@@ -1299,11 +1302,12 @@ $('verdictBtn').onclick=async()=>{
   };
   document.getElementById('exportCardBtn').onclick=()=>exportVerdictCard(t,run);
   if(confUnsub)confUnsub();
-  confUnsub=client.onUpdate(api.serve.confidence,{runId:H.runId},cf=>{
-    const elb=document.getElementById('confBand');if(!elb||!cf)return;
-    elb.textContent=cf.done<cf.total
-      ?`confidence band: ${cf.done}/${cf.total} replays done…`
-      :`band across ${cf.done} seed replays: ${cf.lo}–${cf.hi}% (mean ${cf.mean}%)`;
+  confUnsub=client.onUpdate(api.mcpaths.get,{runId:H.runId},cf=>{
+    const elb=document.getElementById('confBand');
+    if(elb&&cf)elb.textContent=`across ${cf.samples} simulated futures: ${cf.lo}–${cf.hi}% (p10–p90 ${cf.p10}–${cf.p90}%)`;
+    if(cf)drawFan(cf);
+    const fm=document.getElementById('fanMeta');
+    if(fm&&cf)fm.textContent=`${cf.samples} full replays, distinct noise seeds · mean ${cf.mean}%`;
   });
   if(estimatesUnsub)estimatesUnsub();
   estimatesUnsub=client.onUpdate(api.serve.estimates,{runId:H.runId},est=>{
@@ -1785,3 +1789,47 @@ client.onUpdate(api.monitor.list,{},async ds=>{
        <span class="chip">daily 06:00</span>`));
   }
 });
+
+/* Monte Carlo fan chart: every path a full replay; color = where it lands */
+function drawFan(cf){
+  const cv=document.getElementById('mcFan');if(!cv||!cf||!cf.paths)return;
+  const dpr=devicePixelRatio,rect=cv.getBoundingClientRect();
+  cv.width=rect.width*dpr;cv.height=rect.height*dpr;
+  const x=cv.getContext('2d'),W2=cv.width,H2=cv.height;
+  const P=cf.paths,R2=P[0].length-1;
+  let lo=Infinity,hi=-Infinity;
+  P.forEach(p=>p.forEach(v2=>{if(v2<lo)lo=v2;if(v2>hi)hi=v2}));
+  const pad=Math.max(2,(hi-lo)*.15);lo=Math.max(0,lo-pad);hi=Math.min(100,hi+pad);
+  const padL=34*dpr,padR=10*dpr,padT=8*dpr,padB=18*dpr;
+  const X=r=>padL+(r/R2)*(W2-padL-padR);
+  const Y=v2=>padT+(1-(v2-lo)/(hi-lo))*(H2-padT-padB);
+  x.clearRect(0,0,W2,H2);
+  // grid + labels
+  x.strokeStyle='rgba(255,255,255,.07)';x.fillStyle='#898781';
+  x.font=`${10*dpr}px system-ui`;x.lineWidth=1;
+  for(const gv of [lo,(lo+hi)/2,hi]){
+    x.beginPath();x.moveTo(padL,Y(gv));x.lineTo(W2-padR,Y(gv));x.stroke();
+    x.fillText(Math.round(gv)+'%',4*dpr,Y(gv)+3*dpr);
+  }
+  x.fillText('R0',padL,H2-4*dpr);x.fillText('R'+R2,W2-padR-16*dpr,H2-4*dpr);
+  // p10–p90 envelope per round
+  const perRound=r=>P.map(p=>p[r]).sort((a,b)=>a-b);
+  const q=(arr,f)=>arr[Math.min(arr.length-1,Math.floor(arr.length*f))];
+  x.beginPath();
+  for(let r=0;r<=R2;r++){const v2=q(perRound(r),.9);r===0?x.moveTo(X(r),Y(v2)):x.lineTo(X(r),Y(v2))}
+  for(let r=R2;r>=0;r--)x.lineTo(X(r),Y(q(perRound(r),.1)));
+  x.closePath();x.fillStyle='rgba(57,135,229,.10)';x.fill();
+  // paths, colored by final landing zone (diverging: blue=support, red=oppose)
+  x.lineWidth=Math.max(1,.8*dpr);
+  P.forEach(p=>{
+    x.strokeStyle=stanceColor((p[p.length-1]-50)/50,.32);
+    x.beginPath();
+    p.forEach((v2,r)=>{r===0?x.moveTo(X(r),Y(v2)):x.lineTo(X(r),Y(v2))});
+    x.stroke();
+  });
+  // median path
+  x.strokeStyle='#fff';x.lineWidth=1.6*dpr;
+  x.beginPath();
+  for(let r=0;r<=R2;r++){const v2=q(perRound(r),.5);r===0?x.moveTo(X(r),Y(v2)):x.lineTo(X(r),Y(v2))}
+  x.stroke();
+}
