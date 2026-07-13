@@ -9,11 +9,14 @@
  */
 
 import type * as distill from "../distill.js";
+import type * as engine from "../engine.js";
 import type * as gemini from "../gemini.js";
 import type * as ingest from "../ingest.js";
 import type * as pipeline from "../pipeline.js";
 import type * as populate from "../populate.js";
 import type * as serve from "../serve.js";
+import type * as sim from "../sim.js";
+import type * as voices from "../voices.js";
 
 import type {
   ApiFromModules,
@@ -23,11 +26,14 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   distill: typeof distill;
+  engine: typeof engine;
   gemini: typeof gemini;
   ingest: typeof ingest;
   pipeline: typeof pipeline;
   populate: typeof populate;
   serve: typeof serve;
+  sim: typeof sim;
+  voices: typeof voices;
 }>;
 
 /**
