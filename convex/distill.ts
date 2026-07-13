@@ -160,6 +160,7 @@ Return JSON: {"cohorts":[...]}`);
     }
 
     await ctx.runMutation(internal.distill.writeCohorts, { decisionId, cohorts, postAssign: postAssign.slice(0, 380) });
+    await ctx.scheduler.runAfter(0, internal.embed.corpus, {});
     return { cohortCount: cohorts.length };
   },
 });

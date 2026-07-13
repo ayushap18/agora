@@ -97,3 +97,27 @@ export const recentRuns = query({
     return out;
   },
 });
+
+// Calibration: record the real-world outcome for a run; scorecard = |error|
+export const calibrate = mutation({
+  args: { runId: v.id("runs"), label: v.string(), actualPct: v.number() },
+  handler: async (ctx, { runId, label, actualPct }) => {
+    const run = (await ctx.db.get(runId))!;
+    const st = await ctx.db.query("roundStats")
+      .withIndex("by_run", (q) => q.eq("runId", runId).eq("round", run.round)).first();
+    if (!st) throw new Error("run has no stats yet");
+    await ctx.db.insert("calibrations", {
+      runId, label: label.slice(0, 80),
+      predictedPct: Math.round((st.sup / st.n) * 100),
+      actualPct: Math.max(0, Math.min(100, Math.round(actualPct))),
+    });
+  },
+});
+
+export const calibrations = query({
+  args: {},
+  handler: async (ctx) => {
+    const rows = await ctx.db.query("calibrations").order("desc").take(12);
+    return rows.map((r) => ({ ...r, error: Math.abs(r.predictedPct - r.actualPct) }));
+  },
+});

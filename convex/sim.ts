@@ -58,7 +58,8 @@ export const start = mutation({
 });
 
 // Fork: fx computed over REAL distilled cohorts by amendment shape
-async function doFork(ctx: any, runId: any, label: string, mode: string, silent: boolean) {
+async function doFork(ctx: any, runId: any, label: string, mode: string, silent: boolean,
+  opts: { seedOffset?: number; fullRounds?: boolean } = {}) {
     const run = (await ctx.db.get(runId))!;
     const cohorts = await ctx.db.query("cohorts")
       .withIndex("by_decision", (q: any) => q.eq("decisionId", run.decisionId)).collect();
@@ -77,15 +78,20 @@ async function doFork(ctx: any, runId: any, label: string, mode: string, silent:
     } else if (mode === "custom") {
       for (const c of cohorts) if (c.baseStance < 0) fx[c.name] = 0.35;
     } // mode "control": fx stays empty
-    const config = silent
-      ? { ...run.config, rounds: Math.min(run.round + 4, run.config.rounds + 4) }
-      : run.config;
+    const config = {
+      ...run.config,
+      seed: run.config.seed + (opts.seedOffset ?? 0),
+      rounds: silent && !opts.fullRounds
+        ? Math.min(run.round + 4, run.config.rounds + 4)
+        : run.config.rounds,
+    };
     const forkRunId = await ctx.db.insert("runs", {
       decisionId: run.decisionId, parentRunId: runId, forkedAtRound: run.round,
       label, status: "ready", round: 0, config,
       amendment: { label, fx }, silent,
     });
-    await ctx.runMutation(internal.engine.copyChunksForFork, { parentRunId: runId, forkRunId });
+    await ctx.runMutation(internal.engine.copyChunksForFork,
+      { parentRunId: runId, forkRunId, fromRoundZero: !!opts.fullRounds });
     await ctx.db.patch(forkRunId, { status: "running" });
     await workflow.start(ctx, internal.sim.simulation, { runId: forkRunId });
     if (!silent) {
@@ -115,11 +121,26 @@ export const estimate = mutation({
     const run = (await ctx.db.get(runId))!;
     const old = (await ctx.db.query("runs")
       .withIndex("by_decision", (q: any) => q.eq("decisionId", run.decisionId)).collect())
-      .filter((r) => r.silent && r.parentRunId === runId);
+      .filter((r) => r.silent && r.parentRunId === runId && !r.label.startsWith("__mc_"));
     for (const k of old) await cascadeDelete(ctx, k._id);
     await doFork(ctx, runId, "__control__", "control", true);
     for (const a of amendments.slice(0, 3))
       await doFork(ctx, runId, a.label, a.mode, true);
+  },
+});
+
+// Monte Carlo: K silent replays of the full run under different noise seeds —
+// the spread of final approval is the model's dynamics-uncertainty band.
+export const monteCarlo = mutation({
+  args: { runId: v.id("runs"), samples: v.optional(v.number()) },
+  handler: async (ctx, { runId, samples = 5 }) => {
+    const run = (await ctx.db.get(runId))!;
+    const old = (await ctx.db.query("runs")
+      .withIndex("by_decision", (q: any) => q.eq("decisionId", run.decisionId)).collect())
+      .filter((r) => r.silent && r.parentRunId === runId && r.label.startsWith("__mc_"));
+    for (const k of old) await cascadeDelete(ctx, k._id);
+    for (let k = 0; k < Math.min(samples, 8); k++)
+      await doFork(ctx, runId, `__mc_${k}__`, "control", true, { seedOffset: (k + 1) * 104729, fullRounds: true });
   },
 });
 

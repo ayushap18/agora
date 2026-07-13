@@ -848,13 +848,13 @@ $('xImportBtn').onclick=async()=>{
 /* live subscriptions — every open screen sees the same pipeline */
 client.onUpdate(api.pipeline.latest,{},rows=>{
   const rail=$('pipeRail');rail.innerHTML='';
-  const LAYERS=['L0','L1','L2','L3','L4','L5','L6'];
+  const LAYERS=['L0','L1','L1.5','L2','L3','L4','L5','L6'];
   const byLayer=Object.fromEntries(rows.map(r=>[r.layer,r]));
   LAYERS.forEach(l=>{
     const r=byLayer[l];
     const row=el('div','pipe-row '+(r?r.status:''),
       `<span class="lyr">${l}</span>
-       <span class="det">${r?r.detail:['ingest','distill','populate','graph','simulate','voices','serve'][LAYERS.indexOf(l)]}</span>
+       <span class="det">${r?r.detail:['ingest','distill','embed','populate','graph','simulate','voices','serve'][LAYERS.indexOf(l)]}</span>
        <span class="chip">${r?r.status:'idle'}</span>`);
     rail.append(row);
   });
@@ -971,6 +971,7 @@ function unsubAll(){
   W.subs.forEach(u=>{try{u()}catch(e){}});W.subs=[];
   if(typeof estimatesUnsub==='function'){try{estimatesUnsub()}catch(e){}estimatesUnsub=null}
   if(typeof cohortUnsub==='function'){try{cohortUnsub()}catch(e){}cohortUnsub=null}
+  if(typeof confUnsub==='function'){try{confUnsub()}catch(e){}confUnsub=null}
 }
 
 async function enterWarRoom(runId){
@@ -1222,13 +1223,15 @@ setRunning=(on)=>{if(on&&W.A.run&&W.A.run.status==='ready')client.mutation(api.s
 $('verdictBtn').onclick=()=>cToast('Verdict — landing in the next build step.');
 
 /* verdict on convex — approval, risk, ranked counterfactual flips */
-let estimatesUnsub=null;
+let estimatesUnsub=null;var confUnsub=null;
 $('verdictBtn').onclick=async()=>{
   const run=W.A.run;if(!run)return;
   const t=W.A.tally();if(!t.n)return;
   const amds=(H.decision&&H.decision.amendments&&H.decision.amendments.length?H.decision.amendments:DECISIONS[S.decisionIdx].amendments);
   // fire estimates only if this run has none yet (each open otherwise respawns 4 runs)
   const existing=await client.query(api.serve.estimates,{runId:H.runId}).catch(()=>null);
+  const conf0=await client.query(api.serve.confidence,{runId:H.runId}).catch(()=>null);
+  if(!conf0)client.mutation(api.sim.monteCarlo,{runId:H.runId,samples:5}).catch(console.error);
   if(!existing)client.mutation(api.sim.estimate,{runId:H.runId,
     amendments:['grandfather','soften','compensate'].slice(0,amds.length)
       .map((m,i)=>({label:amds[i].label,mode:m}))}).catch(console.error);
@@ -1252,7 +1255,8 @@ $('verdictBtn').onclick=async()=>{
     <div class="verdict-hero">
       <div class="vh"><div class="k">Predicted approval</div>
         <div class="v" style="color:var(--sup)">${pctv(t.sup)}%</div>
-        <div class="d">${t.sup} of ${t.n} personas support</div></div>
+        <div class="d">${t.sup} of ${t.n} personas support</div>
+        <div class="d" id="confBand" style="color:var(--ink-2)">confidence band: running replays…</div></div>
       <div class="vh"><div class="k">Opposition</div>
         <div class="v" style="color:var(--opp)">${pctv(t.opp)}%</div>
         <div class="d">${W.A.factions.filter(f=>f.side==='opp').length||'no'} organized opposing faction(s)</div></div>
@@ -1267,9 +1271,27 @@ $('verdictBtn').onclick=async()=>{
     <div style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin:14px 0 8px">
       Model council · each model predicts the outcome blind</div>
     <div id="councilRows"><div class="ev sys">convening the council…</div></div>
-    <div class="foot"><button class="btn primary" data-close>Close</button></div>`;
+    <div class="foot">
+      <button class="btn" id="calibrateBtn">🎯 Calibrate vs reality</button>
+      <button class="btn primary" data-close>Close</button></div>`;
   $('verdictModal').classList.add('open');
   renderCouncil();
+  document.getElementById('calibrateBtn').onclick=async()=>{
+    const v=prompt('Real-world outcome — what % actually supported this decision?');
+    if(v===null)return;
+    const pct=parseFloat(v);
+    if(!Number.isFinite(pct)){cToast('enter a number 0–100');return}
+    await client.mutation(api.ops.calibrate,{runId:H.runId,
+      label:(H.decision||DECISIONS[S.decisionIdx]).title,actualPct:pct}).catch(console.error);
+    document.getElementById('calibrateBtn').textContent='🎯 Calibrated ✓ (see dashboard)';
+  };
+  if(confUnsub)confUnsub();
+  confUnsub=client.onUpdate(api.serve.confidence,{runId:H.runId},cf=>{
+    const elb=document.getElementById('confBand');if(!elb||!cf)return;
+    elb.textContent=cf.done<cf.total
+      ?`confidence band: ${cf.done}/${cf.total} replays done…`
+      :`band across ${cf.done} seed replays: ${cf.lo}–${cf.hi}% (mean ${cf.mean}%)`;
+  });
   if(estimatesUnsub)estimatesUnsub();
   estimatesUnsub=client.onUpdate(api.serve.estimates,{runId:H.runId},est=>{
     const box=document.getElementById('estimateRows');if(!box||!est)return;
@@ -1592,3 +1614,24 @@ async function renderCouncil(){
     </div>`).join('')
     +(res.skipped&&res.skipped.length?`<div style="font-size:11px;color:var(--ink-3)">no valid answer: ${esc(res.skipped.join(', '))}</div>`:'');
 }
+
+
+/* calibration scorecard on the dashboard */
+client.onUpdate(api.ops.calibrations,{},rows=>{
+  let card=document.getElementById('calCard');
+  if(!rows.length){if(card)card.remove();return}
+  if(!card){
+    card=el('div','card runs-card');card.id='calCard';
+    card.innerHTML='<div class="card-h">Calibration · predicted vs reality</div><div id="calRows"></div>';
+    $('dash').append(card);
+  }
+  const box=document.getElementById('calRows');box.innerHTML='';
+  rows.forEach(r=>{
+    const grade=r.error<=5?'A':r.error<=10?'B':r.error<=20?'C':'D';
+    box.append(el('div','run-row',
+      `<span class="t"><b>${esc(r.label)}</b>predicted ${r.predictedPct}% · actual ${r.actualPct}%</span>
+       <span class="chip">±${r.error} pts</span>
+       <span class="acc" style="font-weight:800;color:${r.error<=10?'var(--good)':r.error<=20?'var(--warning)':'var(--opp)'}">${grade}</span>
+       <span></span>`));
+  });
+});

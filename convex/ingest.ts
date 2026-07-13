@@ -1,4 +1,5 @@
 import { action, internalAction, internalMutation, mutation, query } from "./_generated/server";
+import { getCfg, tiersOf } from "./llm";
 import { internal } from "./_generated/api";
 import { v } from "convex/values";
 
@@ -286,7 +287,6 @@ export const insertScraped = mutation({
 export const llmInfo = action({
   args: {},
   handler: async (ctx) => {
-    const { getCfg, tiersOf } = await import("./llm");
     const cfg = await getCfg(ctx);
     return { tiers: tiersOf(cfg) };
   },

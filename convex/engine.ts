@@ -109,10 +109,10 @@ export const tickRound = internalMutation({
 });
 
 export const copyChunksForFork = internalMutation({
-  args: { parentRunId: v.id("runs"), forkRunId: v.id("runs") },
-  handler: async (ctx, { parentRunId, forkRunId }) => {
+  args: { parentRunId: v.id("runs"), forkRunId: v.id("runs"), fromRoundZero: v.optional(v.boolean()) },
+  handler: async (ctx, { parentRunId, forkRunId, fromRoundZero }) => {
     const fork = (await ctx.db.get(forkRunId))!;
-    const upTo = fork.forkedAtRound ?? 0;
+    const upTo = fromRoundZero ? 0 : (fork.forkedAtRound ?? 0);
     const pcs = await ctx.db.query("personaChunks").withIndex("by_run", (q: any) => q.eq("runId", parentRunId)).collect();
     for (const c of pcs) { const { _id, _creationTime, ...rest } = c as any; await ctx.db.insert("personaChunks", { ...rest, runId: forkRunId }); }
     const acs = await ctx.db.query("adjChunks").withIndex("by_run", (q: any) => q.eq("runId", parentRunId)).collect();

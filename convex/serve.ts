@@ -169,7 +169,7 @@ export const estimates = query({
     if (!run) return null;
     const kids = (await ctx.db.query("runs")
       .withIndex("by_decision", (q) => q.eq("decisionId", run.decisionId)).collect())
-      .filter((r) => r.silent && r.parentRunId === runId);
+      .filter((r) => r.silent && r.parentRunId === runId && !r.label.startsWith("__mc_"));
     if (!kids.length) return null;
     const rows = [];
     let controlOpp: number | null = null;
@@ -198,5 +198,29 @@ export const decision = query({
   handler: async (ctx, { decisionId }) => {
     const d = await ctx.db.get(decisionId);
     return d ? { title: d.title, body: d.body, amendments: d.amendments } : null;
+  },
+});
+
+// Monte Carlo confidence band: spread of final approval across seed replays
+export const confidence = query({
+  args: { runId: v.id("runs") },
+  handler: async (ctx, { runId }) => {
+    const run = await ctx.db.get(runId);
+    if (!run) return null;
+    const mcs = (await ctx.db.query("runs")
+      .withIndex("by_decision", (q) => q.eq("decisionId", run.decisionId)).collect())
+      .filter((r) => r.silent && r.parentRunId === runId && r.label.startsWith("__mc_"));
+    if (!mcs.length) return null;
+    const pcts: number[] = [];
+    for (const m of mcs) {
+      if (m.status !== "complete") continue;
+      const st = await ctx.db.query("roundStats")
+        .withIndex("by_run", (q) => q.eq("runId", m._id).eq("round", m.round)).first();
+      if (st) pcts.push(Math.round((st.sup / st.n) * 100));
+    }
+    return { done: pcts.length, total: mcs.length,
+      lo: pcts.length ? Math.min(...pcts) : null,
+      hi: pcts.length ? Math.max(...pcts) : null,
+      mean: pcts.length ? Math.round(pcts.reduce((a, b) => a + b, 0) / pcts.length) : null };
   },
 });

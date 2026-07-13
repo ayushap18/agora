@@ -28,7 +28,9 @@ export default defineSchema({
     tags: v.optional(v.array(v.string())),
     cohortIdx: v.optional(v.number()),
     hash: v.optional(v.string()),
-  }).index("by_source", ["sourceId"]).index("by_hash", ["hash"]),
+    embedding: v.optional(v.array(v.float64())),
+  }).index("by_source", ["sourceId"]).index("by_hash", ["hash"])
+    .vectorIndex("by_embedding", { vectorField: "embedding", dimensions: 768, filterFields: ["cohortIdx"] }),
   cohorts: defineTable({
     decisionId: v.id("decisions"),
     idx: v.number(),
@@ -119,6 +121,12 @@ export default defineSchema({
     kind: v.string(),
     payload: v.any(),
   }).index("by_run", ["runId"]),
+  calibrations: defineTable({
+    runId: v.id("runs"),
+    label: v.string(),
+    predictedPct: v.number(),
+    actualPct: v.number(),
+  }),
   settings: defineTable({
     geminiKey: v.optional(v.string()),
     localUrl: v.optional(v.string()),

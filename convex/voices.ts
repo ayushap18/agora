@@ -3,7 +3,8 @@ import { RateLimiter, MINUTE } from "@convex-dev/rate-limiter";
 import { components, internal } from "./_generated/api";
 import { internalAction, internalMutation, internalQuery } from "./_generated/server";
 import { v } from "convex/values";
-import { llmJson } from "./llm";
+import { llmJson, getCfg } from "./llm";
+import { embedOne } from "./embed";
 import { mulberry32 } from "./populate";
 
 const pool = new Workpool(components.voicesPool, { maxParallelism: 4 });
@@ -74,7 +75,7 @@ export const speakerContext = internalQuery({
       .withIndex("by_run", (q: any) => q.eq("runId", runId)).collect())
       .filter((vc: any) => vc.personaIdx === idx).slice(-2);
     return {
-      name: chunk.names[local], cohort: cohort?.name ?? "—",
+      name: chunk.names[local], cohort: cohort?.name ?? "—", cohortIdx: chunk.cohortIdx[local],
       seedQuotes: cohort?.seedQuotes ?? { o: [], n: [], s: [] },
       stance: cur[idx] ?? 0,
       decisionTitle: decision.title,
@@ -100,6 +101,22 @@ export const speak = internalAction({
   handler: async (ctx, { runId, round, idx }) => {
     const c: any = await ctx.runQuery(internal.voices.speakerContext, { runId, round, idx });
     if (!c) return;
+    // RAG: vector-search the corpus for the grievance most relevant to this
+    // persona's cohort + current lean; beats the random seedRef when available
+    try {
+      const cfg = await getCfg(ctx);
+      const qv = await embedOne(cfg,
+        `${c.decisionTitle}. ${c.cohort} perspective, ${c.stance < -0.15 ? "opposed" : c.stance > 0.15 ? "supportive" : "undecided"}.`);
+      if (qv) {
+        const hits = await ctx.vectorSearch("posts", "by_embedding", {
+          vector: qv, limit: 3, filter: (q) => q.eq("cohortIdx", c.cohortIdx),
+        });
+        if (hits.length) {
+          const best: any = await ctx.runQuery(internal.voices.postText, { postId: hits[0]._id });
+          if (best) { c.seedText = best.text; c.seedUrl = best.url ?? c.seedUrl; c.rag = true; }
+        }
+      }
+    } catch { /* retrieval is best-effort */ }
     let text: string | null = null;
     const ok = await rl.limit(ctx, "gemini");
     if (ok.ok) {
@@ -198,5 +215,13 @@ Two sentences max, analyst voice, no hedging. Return JSON: {"text":"..."}`);
       runId, round, personaIdx: -2, name: "Synthesizer", cohort: "—",
       stance: 0, text, kind: "synthesis",
     });
+  },
+});
+
+export const postText = internalQuery({
+  args: { postId: v.id("posts") },
+  handler: async (ctx, { postId }) => {
+    const p = await ctx.db.get(postId);
+    return p ? { text: p.text.slice(0, 260), url: p.url ?? null } : null;
   },
 });
