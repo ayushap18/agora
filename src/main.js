@@ -943,3 +943,263 @@ $('populateBtn').onclick=async()=>{
     $('populateBtn').textContent='③ Network built ✓';
   }catch(e){console.error(e);$('populateBtn').disabled=false;$('populateBtn').textContent='③ Build network — 1,800 personas'}
 };
+
+/* ═══════════════════════ WAR ROOM ON CONVEX (L6) ═══════════════════════
+   The canvas/SVG renderers consume Sim-shaped objects; we feed them thin
+   adapters built from reactive queries. The local engine no longer ticks. */
+const hash01=i=>{let x=(i*2654435761)>>>0;x^=x>>13;x=(x*0x5bd1e995)>>>0;return((x^=x>>15)>>>0)/4294967296};
+
+function makeAdapter(label){
+  return {
+    label,count:0,adj:[],personas:[],pos:[],factions:[],history:[],round:0,
+    d:{cohorts:[]},
+    stances(){return this._stances||[]},
+    tick(){return false},                    // guards legacy space-bar handler
+    quote(){return ''},                       // guards legacy popover handler
+    meanByCohort(){return []},
+    tally(vals){const s=vals||this.stances();let sup=0,opp=0;
+      for(const v of s){if(v>.12)sup++;else if(v<-.12)opp++}
+      return{sup,opp,neu:s.length-sup-opp,n:s.length}},
+    applyLive(st){
+      this._stances=st.stances;this.round=st.run.round;this.run=st.run;
+      this.factions=st.factions;this.d.cohorts=st.cohorts.map(c=>({name:c.name}));
+      if(this.count!==st.stances.length){
+        this.count=st.stances.length;
+        const nc=Math.max(1,st.cohorts.length);
+        this.personas=st.cohortIdx.map((ci,i)=>({ci,inf:st.inf[i],stance:st.stances[i]}));
+        this.pos=st.cohortIdx.map((ci,i)=>({
+          y:(ci+.5)/nc+((hash01(i)-.5)*.72)/nc,x:0,jit:hash01(i*7+3)*Math.PI*2}));
+      }else this.personas.forEach((p,i)=>{p.stance=st.stances[i]});
+    },
+  };
+}
+
+const W={A:makeAdapter('baseline'),B:null,subs:[],timelineA:[],timelineB:[],feed:[],scrubbing:false,roundCache:{}};
+
+function unsubAll(){W.subs.forEach(u=>{try{u()}catch(e){}});W.subs=[]}
+
+async function enterWarRoom(runId){
+  unsubAll();
+  W.A=makeAdapter('baseline');W.B=null;W.timelineB=[];W.roundCache={};
+  H.runId=runId;
+  S.sim=W.A;S.alt=null;S.scrubbed=false;   // point legacy renderers at adapters
+  exitForkUI();
+  showView('room');
+  $('speedBtn').style.display='none';       // pacing is server-owned now
+  sizeCanvases();
+  // graph edges: one-time fetch, reshape into per-persona arrays
+  client.query(api.serve.graph,{runId}).then(chunks=>{
+    const adj=[];chunks.forEach(ch=>{
+      for(let i=0;i+1<ch.offsets.length;i++)adj.push(ch.flatAdj.slice(ch.offsets[i],ch.offsets[i+1]));});
+    W.A.adj=adj;if(W.B)W.B.adj=adj;
+  });
+  W.subs.push(client.onUpdate(api.serve.liveState,{runId},st=>{if(st){W.A.applyLive(st);cRenderFrame();maybeAttachFork(st)}}));
+  W.subs.push(client.onUpdate(api.serve.timeline,{runId},t=>{W.timelineA=t;cRenderCharts()}));
+  W.subs.push(client.onUpdate(api.serve.feed,{runId},f=>{W.feed=f;cRenderFeed()}));
+  W.subs.push(client.onUpdate(api.serve.runsForDecision,{decisionId:H.decisionDocId},runs=>{
+    const fork=runs.find(r=>r.parentRunId===H.runId);
+    if(fork&&!W.B)attachFork(fork._id,fork.amendment?fork.amendment.label:fork.label);
+  }));
+  const d=DECISIONS[S.decisionIdx];
+  $('rtitle').textContent=d.title;$('rsub').textContent='grounded in real social posts · convex durable workflow';
+}
+function maybeAttachFork(){/* handled by runsForDecision sub */}
+
+function attachFork(forkId,label){
+  if(W.B)return;
+  H.forkId=forkId;
+  W.B=makeAdapter('amended');W.B.adj=W.A.adj;
+  S.alt=W.B;S.forkLabel=label;
+  enterForkUI();
+  $('mapBLabel').textContent=label;
+  W.subs.push(client.onUpdate(api.serve.liveState,{runId:forkId},st=>{if(st)W.B.applyLive(st)}));
+  W.subs.push(client.onUpdate(api.serve.timeline,{runId:forkId},t=>{W.timelineB=t;cRenderCharts()}));
+}
+
+/* render pipeline (replaces legacy renderAll for the convex path) */
+function cRenderFrame(){
+  const run=W.A.run;if(!run)return;
+  $('roundPill').textContent=`ROUND ${run.round}/${run.rounds}`;
+  $('popChip').textContent=`${run.n} personas · live graph`;
+  $('statusTxt').textContent=run.status==='running'?'LIVE':run.status.toUpperCase();
+  $('statusDot').className='dot'+(run.status==='running'?' live':'');
+  $('runBtn').innerHTML=run.status==='ready'?'▶ Run':run.status==='running'?'● LIVE':'▣ Done';
+  $('runBtn').disabled=run.status!=='ready';
+  if(!W.scrubbing){$('scrub').max=run.round;$('scrub').value=run.round;
+    $('scrubLab').textContent=`round ${run.round} / ${run.round}`}
+  cRenderTally();renderFactions();
+}
+function cRenderTally(){
+  const t=W.A.tally();if(!t.n)return;
+  const rows=[['Support',t.sup,'var(--sup)'],['Neutral',t.neu,'var(--neu)'],['Oppose',t.opp,'var(--opp)']];
+  $('tallyRows').innerHTML=rows.map(([lab,n,col])=>`
+    <div class="tally-row"><i style="width:10px;height:10px;border-radius:3px;background:${col}"></i>
+      <span>${lab}</span><span class="bar"><i style="width:${n/t.n*100}%;background:${col}"></i></span>
+      <span class="num"><b>${Math.round(n/t.n*100)}%</b> · ${n}</span></div>`).join('');
+  $('apprChip').textContent=Math.round(t.sup/t.n*100)+'% approve';
+  if(W.B&&W.B.run){
+    const ta=W.B.tally();
+    if(ta.n){const d=Math.round(ta.sup/ta.n*100)-Math.round(t.sup/t.n*100);
+    $('tallyFork').innerHTML=`<b style="color:var(--ink)">⑂ Fork comparison</b>
+      <div class="cmp"><span>Baseline approval</span><b>${Math.round(t.sup/t.n*100)}%</b></div>
+      <div class="cmp"><span>Amended approval</span><b style="color:var(--sup)">${Math.round(ta.sup/ta.n*100)}% (${d>=0?'+':''}${d} pts)</b></div>`}
+  }
+}
+function cRenderCharts(){
+  // river from timeline tallies
+  const tl=W.timelineA;if(!tl.length)return;
+  const svg=$('river'),Wd=svg.clientWidth||330,Hh=128;
+  svg.setAttribute('viewBox',`0 0 ${Wd} ${Hh}`);
+  const n=tl.length,padL=6,padR=44,padT=6,padB=16,iw=Wd-padL-padR,ih=Hh-padT-padB;
+  const shares=tl.map(t=>[t.sup/t.n,t.neu/t.n,t.opp/t.n]);
+  const X=i=>padL+(n===1?iw/2:i/(n-1)*iw),Y=v=>padT+(1-v)*ih;
+  const band=(lo,hi,color)=>{
+    let d='M'+X(0)+','+Y(hi(0));
+    for(let i=1;i<n;i++)d+='L'+X(i)+','+Y(hi(i));
+    for(let i=n-1;i>=0;i--)d+='L'+X(i)+','+Y(lo(i));
+    return`<path d="${d}Z" fill="${color}" stroke="var(--surface)" stroke-width="2"/>`};
+  const sup=i=>shares[i][0],neu=i=>shares[i][1];
+  let out=band(i=>1-sup(i),i=>1,'var(--sup)')
+        +band(i=>1-sup(i)-neu(i),i=>1-sup(i),'var(--neu)')
+        +band(i=>0,i=>1-sup(i)-neu(i),'var(--opp)');
+  const last=shares[n-1],yy=[1-last[0]/2,1-last[0]-last[1]/2,1-last[0]-last[1]-last[2]/2];
+  ['Support','Neutral','Oppose'].forEach((lab,i)=>{
+    if(last[i]<.04)return;
+    out+=`<text x="${Wd-padR+5}" y="${Y(yy[i])+3}" font-size="9.5" fill="var(--ink-2)">${Math.round(last[i]*100)}%</text>`});
+  out+=`<text x="${padL}" y="${Hh-4}" font-size="9" fill="var(--ink-3)">R0</text>
+        <text x="${padL+iw-14}" y="${Hh-4}" font-size="9" fill="var(--ink-3)">R${n-1}</text>`;
+  svg.innerHTML=out;
+  // divergence
+  if(W.B&&W.timelineB.length){
+    $('divergeCard').style.display='block';
+    const svg2=$('diverge'),W2=svg2.clientWidth||330,H2=104;
+    svg2.setAttribute('viewBox',`0 0 ${W2} ${H2}`);
+    const a=W.timelineA,b=W.timelineB,nn=a.length;
+    const pL=6,pR=64,pT=8,pB=14,iw2=W2-pL-pR,ih2=H2-pT-pB;
+    const X2=i=>pL+(nn===1?iw2/2:i/(nn-1)*iw2),Y2=v=>pT+(1-v)*ih2;
+    const line=(arr,col,w)=>'<polyline fill="none" stroke="'+col+'" stroke-width="'+w+'" points="'
+      +arr.map((t,i)=>X2(i)+','+Y2(t.sup/t.n)).join(' ')+'"/>';
+    const la=a[a.length-1],lb=b[b.length-1];
+    svg2.innerHTML=
+      `<line x1="${pL}" x2="${pL+iw2}" y1="${Y2(.5)}" y2="${Y2(.5)}" stroke="var(--grid)" stroke-width="1"/>`
+      +line(a,'var(--ink-3)',1.6)+line(b,'var(--sup)',2)
+      +`<text x="${X2(a.length-1)+7}" y="${Y2(la.sup/la.n)+3}" font-size="9.5" fill="var(--ink-3)">base ${Math.round(la.sup/la.n*100)}%</text>
+        <text x="${X2(b.length-1)+7}" y="${Y2(lb.sup/lb.n)+3}" font-size="9.5" fill="var(--sup)">fork ${Math.round(lb.sup/lb.n*100)}%</text>`;
+  }
+}
+function cRenderFeed(){
+  const feed=$('feed');feed.innerHTML='';
+  W.feed.forEach(e=>{
+    if(e.type==='voice'){
+      const cls=e.kind==='dissent'?'ev dissent':e.kind==='synthesis'?'ev beat':'ev';
+      const d=el('div',cls,
+        e.kind==='dissent'
+          ?`⚠ <span class="tag">DISSENT AGENT</span> ${e.text}`
+          :e.kind==='synthesis'
+          ?`◆ <span class="tag" style="color:var(--warning)">ROUND ${e.round}</span> ${e.text}`
+          :`<div class="who"><b>${e.name}</b><span class="chip">${e.cohort}</span>
+             <span class="stance-chip" style="color:${stanceColor(e.stance)}">${e.stance>=0?'+':''}${e.stance.toFixed(2)}</span></div>
+            “${e.text}”<div style="font-size:10px;color:var(--ink-3);margin-top:3px">round ${e.round}</div>`);
+      feed.append(d);
+    }else{
+      const msg=e.kind==='fork'?`⑂ <b>TIMELINE FORKED</b> at round ${e.round} — ${e.payload.label}`
+        :e.kind==='start'?'▶ <b>Simulation started</b> — durable workflow running'
+        :e.kind==='complete'?'▣ <b>Simulation complete</b> — open the Verdict'
+        :e.kind;
+      feed.append(el('div','ev sys',msg));
+    }
+  });
+}
+
+/* controls */
+$('enterRoomBtn').onclick=()=>enterWarRoom(H.runId);
+$('runBtn').onclick=async()=>{if(W.A.run&&W.A.run.status==='ready')await client.mutation(api.sim.start,{runId:H.runId})};
+$('resetBtn').onclick=()=>{unsubAll();showView('setup')};
+$('interveneBtn').onclick=()=>{
+  if(W.B){cToast('One fork per run — reset for a fresh branch.');return}
+  const run=W.A.run;
+  if(!run||run.round>=run.rounds-2){cToast('Too late to fork — fewer than 2 rounds left.');return}
+  const list=$('amendList');list.innerHTML='';
+  const d=DECISIONS[S.decisionIdx];
+  const MODES=[['grandfather',d.amendments[0]],['soften',d.amendments[1]],['compensate',d.amendments[2]]];
+  MODES.forEach(([mode,a])=>{
+    const b=el('button','amend',
+      `<div><b>${a.label}</b><div style="color:var(--ink-3);font-size:11.5px;margin-top:2px">${a.detail}</div></div>
+       <span class="fx"><b>fork</b>timeline</span>`);
+    b.onclick=async()=>{closeModals();await client.mutation(api.sim.fork,{runId:H.runId,label:a.label,mode})};
+    list.append(b);
+  });
+  $('interveneModal').classList.add('open');
+};
+$('customForkBtn').onclick=async()=>{
+  const t=$('amendCustom').value.trim();if(!t)return;
+  closeModals();await client.mutation(api.sim.fork,{runId:H.runId,label:t,mode:'custom'});
+};
+function cToast(msg){W.feed.unshift({type:'event',kind:'sys',t:Date.now()});
+  const feed=$('feed');feed.prepend(el('div','ev sys',msg))}
+
+/* scrubber → historical rounds from convex */
+$('scrub').oninput=async()=>{
+  const run=W.A.run;if(!run)return;
+  const r=+$('scrub').value;
+  W.scrubbing=r<run.round;
+  $('liveBtn').style.display=W.scrubbing?'inline-flex':'none';
+  $('scrubLab').textContent=`round ${r} / ${run.round}${W.scrubbing?' · replay':''}`;
+  if(W.scrubbing){
+    const key=run._id+':'+r;
+    if(!W.roundCache[key])W.roundCache[key]=await client.query(api.serve.roundStances,{runId:H.runId,round:r});
+    W.scrubStances=W.roundCache[key];
+  }
+};
+$('liveBtn').onclick=()=>{W.scrubbing=false;$('liveBtn').style.display='none';
+  if(W.A.run){$('scrub').value=W.A.run.round;$('scrubLab').textContent=`round ${W.A.run.round} / ${W.A.run.round}`}};
+
+/* persona popover → server drill-down with real-post provenance */
+async function cNodeHit(e,cv,adapter,runId){
+  if(!adapter||!adapter.count)return;
+  const r=cv.getBoundingClientRect(),dpr=devicePixelRatio;
+  const mx=(e.clientX-r.left)*dpr,my=(e.clientY-r.top)*dpr;
+  let best=-1,bd=1e9;
+  for(let i=0;i<adapter.count;i++){
+    const p=adapter.pos[i];if(!p||p.sy==null)continue;
+    const d2=(p.x-mx)**2+(p.sy-my)**2;
+    if(d2<bd){bd=d2;best=i}
+  }
+  if(best<0||bd>(22*dpr)**2){$('pop').style.display='none';return}
+  const info=await client.query(api.serve.persona,{runId,idx:best});
+  if(!info)return;
+  const hist=info.hist,spark=hist.map((v,i)=>`${(i/Math.max(1,hist.length-1))*100},${(1-(v+1)/2)*30+2}`).join(' ');
+  const s=hist[hist.length-1]??0;
+  const pop=$('pop');
+  pop.innerHTML=`<div class="who"><b>${info.name}</b>
+      <span class="stance-chip" style="color:${stanceColor(s)}">${s>=0?'+':''}${s.toFixed(2)}</span></div>
+    <span class="chip">${info.cohort}</span> ${info.inf>1.4?'<span class="chip">⭑ influencer</span>':''}
+    ${info.seedPost?`<div class="quote">“${info.seedPost.text}”</div>
+      <div style="font-size:10px;color:var(--ink-3)">grown from a real ${info.seedPost.platform} post by @${info.seedPost.author}
+      ${info.seedPost.url?` · <a href="${info.seedPost.url}" target="_blank" style="color:var(--sup)">source ↗</a>`:''}</div>`
+      :'<div class="quote" style="color:var(--ink-3)">synthetic persona (no seed post)</div>'}
+    <div style="font-size:10px;letter-spacing:.1em;color:var(--ink-3);font-weight:700;margin-top:6px">STANCE · R0 → R${hist.length-1}</div>
+    <svg viewBox="0 0 100 34" preserveAspectRatio="none">
+      <line x1="0" y1="17" x2="100" y2="17" stroke="var(--baseline)" stroke-width=".5"/>
+      <polyline points="${spark}" fill="none" stroke="${stanceColor(s)}" stroke-width="1.6" vector-effect="non-scaling-stroke"/></svg>`;
+  pop.style.display='block';
+  pop.style.left=Math.min(innerWidth-262,e.clientX+14)+'px';
+  pop.style.top=Math.min(innerHeight-230,e.clientY-20)+'px';
+}
+cvA.addEventListener('click',e=>{if(W.A.run)cNodeHit(e,cvA,W.A,H.runId)});
+cvB.addEventListener('click',e=>{if(W.B&&W.B.run)cNodeHit(e,cvB,W.B,H.forkId)});
+
+/* convex-era frame loop: reuse drawMap with adapters + scrub cache */
+(function cRaf(){
+  if($('room').classList.contains('active')&&W.A.run){
+    drawMap(cvA,W.A,W.scrubbing?W.scrubStances:null);
+    if(W.B&&W.B.run)drawMap(cvB,W.B,null);
+    if(!W.scrubbing)cRenderTally();
+  }
+  requestAnimationFrame(cRaf);
+})();
+Object.assign(window,{W,enterWarRoom});
+
+/* neutralize legacy local-engine paths (deleted for good in cleanup task) */
+setRunning=(on)=>{if(on&&W.A.run&&W.A.run.status==='ready')client.mutation(api.sim.start,{runId:H.runId})};
+$('verdictBtn').onclick=()=>cToast('Verdict — landing in the next build step.');

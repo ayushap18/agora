@@ -138,3 +138,13 @@ export const persona = query({
     };
   },
 });
+
+// one-time per run: packed adjacency for client edge rendering
+export const graph = query({
+  args: { runId: v.id("runs") },
+  handler: async (ctx, { runId }) => {
+    const acs = await ctx.db.query("adjChunks").withIndex("by_run", (q) => q.eq("runId", runId)).collect();
+    acs.sort((a, b) => a.chunkIdx - b.chunkIdx);
+    return acs.map((c) => ({ flatAdj: c.flatAdj, offsets: c.offsets }));
+  },
+});
