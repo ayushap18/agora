@@ -8,13 +8,19 @@
  * @module
  */
 
+import type * as ingest from "../ingest.js";
+import type * as pipeline from "../pipeline.js";
+
 import type {
   ApiFromModules,
   FilterApi,
   FunctionReference,
 } from "convex/server";
 
-declare const fullApi: ApiFromModules<{}>;
+declare const fullApi: ApiFromModules<{
+  ingest: typeof ingest;
+  pipeline: typeof pipeline;
+}>;
 
 /**
  * A utility for referencing Convex functions in your app's public API.
