@@ -112,116 +112,9 @@ const DECISIONS=[
     fx:{'CS students':.5,'Faculty':-.15,'Humanities students':.3}}]}
 ];
 
-const MAX_ROUNDS=12;
-const STORE_KEY='agora-run-v1';
 
 /* ─── simulation (LEGACY in-browser engine: unreachable, kept only as the renderer
    shape reference — delete after the hackathon) ─── */
-class Sim{
-  constructor(decision,seed,count,label){
-    this.d=decision; this.seed=seed; this.count=count; this.label=label||'baseline';
-    this.round=0; this.pendingFx=null; this.history=[]; this.factions=[];
-    const rng=mulberry32(seed);
-    this.personas=[]; this.adj=[];
-    // personas: cohort assignment by share, deterministic
-    const pool=[];
-    decision.cohorts.forEach((c,ci)=>{const n=Math.round(c.share*count);
-      for(let i=0;i<n;i++)pool.push(ci);});
-    while(pool.length<count)pool.push(0);
-    pool.length=count;
-    for(let i=0;i<count;i++){
-      const ci=pool[i],c=decision.cohorts[ci];
-      this.personas.push({
-        id:i,name:FIRST[Math.floor(rng()*FIRST.length)]+' '+LAST[Math.floor(rng()*LAST.length)],
-        ci, stance:clamp(c.base+(rng()-.5)*.55,-1,1),
-        stub:.25+rng()*.5, vol:c.vol, inf:(rng()<.08?1.6:0.4)+rng()*.6*c.inf,
-        bias:0});
-    }
-    // social graph: mostly intra-cohort, some bridges; influencers get extra reach
-    for(let i=0;i<count;i++){
-      const p=this.personas[i],k=2+Math.floor(rng()*3)+(p.inf>1.4?3:0),nb=new Set();
-      let guard=0;
-      while(nb.size<k&&guard++<60){
-        let j;
-        if(rng()<.68){ // same cohort
-          j=Math.floor(rng()*count);
-          if(this.personas[j].ci!==p.ci)continue;
-        } else j=Math.floor(rng()*count);
-        if(j!==i)nb.add(j);
-      }
-      this.adj.push([...nb]);
-    }
-    // fixed vertical position by cohort band (x = stance, animated)
-    this.pos=this.personas.map((p,i)=>({y:(p.ci+.5)/decision.cohorts.length+((rng()-.5)*.72)/decision.cohorts.length,
-      x:0,vx:0,jit:rng()*Math.PI*2}));
-    this.rng=rng;
-    this.snapshot();
-  }
-  stances(){return this.personas.map(p=>p.stance)}
-  snapshot(){this.history[this.round]=Float32Array.from(this.stances())}
-  applyAmendment(a){ // sustained pull for the rest of the run — a policy change is permanent
-    this.pendingFx={fx:a.fx,left:MAX_ROUNDS};
-  }
-  tick(){
-    if(this.round>=MAX_ROUNDS)return false;
-    this.round++;
-    const prev=this.stances(),P=this.personas;
-    const beat=this.d.beats[this.round];
-    for(let i=0;i<P.length;i++){
-      const p=P[i],c=this.d.cohorts[p.ci];
-      let acc=0,wsum=0;
-      for(const j of this.adj[i]){ // bounded confidence: distant opinions barely pull
-        const w=P[j].inf*Math.max(.08,1-Math.abs(prev[j]-prev[i])*.75);
-        acc+=w*(prev[j]-prev[i]);wsum+=w}
-      const social=wsum?(acc/wsum)*.30*(1-p.stub):0;
-      const harden=.045*Math.sign(prev[i])*Math.abs(prev[i]); // conviction hardening → polarization
-      let shift=0;
-      if(beat&&beat.shift[c.name])shift+=beat.shift[c.name];
-      if(this.pendingFx&&this.pendingFx.fx[c.name])shift+=this.pendingFx.fx[c.name]/4;
-      const noise=(this.rng()-.5)*.05*p.vol;
-      p.stance=clamp(prev[i]+social+harden+shift+noise,-1,1);
-    }
-    if(this.pendingFx&&--this.pendingFx.left<=0)this.pendingFx=null;
-    this.snapshot();
-    if(this.round>=3)this.computeFactions();
-    return true;
-  }
-  tally(stances){
-    const s=stances||this.stances();
-    let sup=0,opp=0;
-    for(const v of s){if(v>.12)sup++;else if(v<-.12)opp++}
-    return{sup,opp,neu:s.length-sup-opp,n:s.length};
-  }
-  meanByCohort(){
-    return this.d.cohorts.map((c,ci)=>{
-      const m=this.personas.filter(p=>p.ci===ci);
-      return{c,ci,n:m.length,mean:m.reduce((a,p)=>a+p.stance,0)/(m.length||1),
-        inf:m.reduce((a,p)=>a+p.inf,0)};
-    });
-  }
-  computeFactions(){
-    // emergent-ish: stance-bucket × dominant cohort, named from cohort faction pools
-    const buckets={};
-    this.personas.forEach(p=>{
-      const b=p.stance<-.45?'opp':p.stance>.45?'sup':null;
-      if(!b)return;
-      const key=b+':'+p.ci;
-      (buckets[key]=buckets[key]||{b,ci:p.ci,n:0}).n++;
-    });
-    this.factions=Object.values(buckets).filter(f=>f.n>=Math.max(6,this.count*.05))
-      .sort((a,b)=>b.n-a.n).slice(0,4).map(f=>{
-        const c=this.d.cohorts[f.ci];
-        return{name:(f.b==='opp'?c.facOpp:c.facSup)||c.name,n:f.n,side:f.b,
-          arg:c.tags[0],cohort:c.name};
-      });
-  }
-  quote(p){
-    const c=this.d.cohorts[p.ci];
-    const pool=p.stance<-.15?c.q.o:p.stance>.15?c.q.s:c.q.n;
-    if(!pool.length)return c.q.o[0]||'…';
-    return pool[Math.floor(this.rng()*pool.length)];
-  }
-}
 
 /* ─── app state ─── */
 const S={sim:null,alt:null,running:false,speed:1,view:0,scrubbed:false,
@@ -268,170 +161,8 @@ function groundFile(f){
 
 /* ─── boot a run ─── */
 $('materializeBtn').onclick=()=>openHarness();
-function startRun(seed,saved){
-  S.seed=seed;
-  const d=DECISIONS[S.decisionIdx];
-  S.sim=new Sim(d,seed,S.count,'baseline');
-  S.alt=null;S.events=[];S.running=false;S.scrubbed=false;S.forkLabel='';
-  if(saved){ // durable resume: replay persisted stance history
-    saved.hist.forEach((h,r)=>{S.sim.history[r]=Float32Array.from(h)});
-    S.sim.round=saved.round;
-    S.sim.personas.forEach((p,i)=>p.stance=saved.hist[saved.round][i]);
-    if(saved.round>=3)S.sim.computeFactions();
-    if(saved.fork){
-      S.alt=new Sim(d,seed,S.count,'amended');
-      saved.altHist.forEach((h,r)=>{S.alt.history[r]=Float32Array.from(h)});
-      S.alt.round=saved.round;
-      S.alt.personas.forEach((p,i)=>p.stance=saved.altHist[saved.round][i]);
-      if(saved.round>=3)S.alt.computeFactions();
-      S.forkLabel=saved.forkLabel;enterForkUI();
-    }
-    S.events=saved.events||[];
-    pushEvent({kind:'sys',html:'⏻ <b>Run resumed</b> from durable state at round '+saved.round+' — the process died, the simulation didn\'t.'});
-  }
-  $('rtitle').textContent=d.title;
-  $('rsub').textContent=d.sub;
-  $('popChip').textContent=S.sim.count+' personas · '+d.cohorts.length+' cohorts';
-  $('setup').classList.remove('active');$('room').classList.add('active');
-  sizeCanvases();
-  if(!saved){
-    pushEvent({kind:'sys',html:'◈ <b>'+S.sim.count+' personas materialized</b> across '+d.cohorts.length+' cohorts, wired into a '+S.sim.adj.reduce((a,x)=>a+x.length,0)+'-edge social graph. Round 0 = private reactions.'});
-    materializeAnim();
-  }
-  renderAll();
-}
 
-/* ─── run loop ─── */
-let tickTimer=null;
-function setRunning(on){
-  if(S.mirror)return;
-  S.running=on&&S.sim.round<MAX_ROUNDS;
-  $('runBtn').innerHTML=S.running?'⏸ Pause':'▶ Run';
-  $('statusTxt').textContent=S.running?'LIVE':(S.sim.round>=MAX_ROUNDS?'COMPLETE':'PAUSED');
-  $('statusDot').className='dot'+(S.running?' live':'');
-  clearInterval(tickTimer);
-  if(S.running)tickTimer=setInterval(tick,1600/S.speed);
-}
-$('runBtn').onclick=()=>setRunning(!S.running);
-$('speedBtn').onclick=()=>{S.speed=S.speed===1?2:S.speed===2?4:1;
-  $('speedBtn').textContent=S.speed+'×';if(S.running)setRunning(true)};
-$('resetBtn').onclick=()=>{setRunning(false);localStorage.removeItem(STORE_KEY);
-  $('room').classList.remove('active');$('setup').classList.add('active');
-  exitForkUI();$('feed').innerHTML='';};
-window.addEventListener('keydown',e=>{
-  if(e.code==='Space'&&$('room').classList.contains('active')&&!e.target.closest('input,textarea')){
-    e.preventDefault();setRunning(!S.running)}});
-
-function tick(){
-  const more=S.sim.tick();
-  if(S.alt)S.alt.tick();
-  S.scrubbed=false;
-  narrate();
-  persist();
-  broadcast();
-  renderAll();
-  if(!more||S.sim.round>=MAX_ROUNDS){
-    setRunning(false);
-    pushEvent({kind:'sys',html:'▣ <b>Simulation complete</b> — '+MAX_ROUNDS+' rounds. Open the <b>Verdict</b>.'});
-    renderFeed();
-  }
-}
-
-/* narrative events for the round that just ran */
-function narrate(){
-  const r=S.sim.round,d=S.sim.d;
-  if(d.beats[r])pushEvent({kind:'beat',html:'◆ <span class="tag" style="color:var(--warning)">EVENT</span> '+d.beats[r].txt});
-  // a few voices from the floor
-  const picks=[];
-  for(let t=0;t<2;t++)picks.push(S.sim.personas[Math.floor(S.sim.rng()*S.sim.count)]);
-  picks.forEach(p=>pushEvent({kind:'quote',p:{name:p.name,cohort:d.cohorts[p.ci].name,stance:p.stance},
-    html:'“'+S.sim.quote(p)+'”'}));
-  // faction emergence
-  if(r>=3){
-    const known=new Set(S.events.filter(e=>e.kind==='faction').map(e=>e.fname));
-    S.sim.factions.forEach(f=>{
-      if(!known.has(f.name))pushEvent({kind:'faction',fname:f.name,
-        html:'⬡ <span class="tag" style="color:var(--c5)">FACTION EMERGED</span> <b>'+f.name+'</b> — '+f.n+' personas coalesced around “'+f.arg+'”. Nobody scripted this.'});
-    });
-  }
-  // dissent agent
-  if(r===3||r===7){
-    const rows=S.sim.meanByCohort(),totInf=rows.reduce((a,x)=>a+x.inf,0);
-    const target=rows.filter(x=>x.mean<-.3).sort((a,b)=>(a.inf/totInf)-(b.inf/totInf))[0];
-    if(target&&target.c.hurt&&target.inf/totInf<.14){
-      pushEvent({kind:'dissent',html:'⚠ <span class="tag">DISSENT AGENT</span> <b>'+target.c.name+'</b> — '
-        +target.n+' personas, only '+pct(target.inf/totInf)+'% of network influence. '+target.c.hurt});
-    }
-  }
-}
-function pushEvent(e){e.round=S.sim?S.sim.round:0;S.events.push(e)}
-
-/* ─── persistence (durable-resume showcase) ─── */
-function persist(){
-  try{localStorage.setItem(STORE_KEY,JSON.stringify({
-    decisionIdx:S.decisionIdx,seed:S.seed,count:S.count,round:S.sim.round,
-    fork:!!S.alt,forkLabel:S.forkLabel,
-    hist:S.sim.history.map(h=>[...h].map(v=>+v.toFixed(3))),
-    altHist:S.alt?S.alt.history.map(h=>[...h].map(v=>+v.toFixed(3))):null,
-    events:S.events.slice(-40)}));}catch(e){}
-}
-// (legacy localStorage resume removed — Convex workflows are the durability layer now)
-
-/* ─── cross-tab live mirror (the "second browser window" moment) ─── */
-const bc=null; // legacy BroadcastChannel mirror removed — reactive queries sync every client
-function broadcast(){
-  if(!bc||S.mirror)return;
-  bc.postMessage({decisionIdx:S.decisionIdx,seed:S.seed,count:S.count,
-    round:S.sim.round,st:[...S.sim.stances()],
-    alt:S.alt?[...S.alt.stances()]:null,forkLabel:S.forkLabel,
-    events:S.events.slice(-30).map(e=>({kind:e.kind,html:e.html,p:e.p,round:e.round,fname:e.fname}))});
-}
-
-/* ─── intervention / fork ─── */
-$('interveneBtn').onclick=()=>{
-  if(S.alt){pushEvent({kind:'sys',html:'One fork per run in the prototype — reset to branch again.'});renderFeed();return}
-  if(S.sim.round>=MAX_ROUNDS-2){pushEvent({kind:'sys',html:'Too late to fork — fewer than 2 rounds left. Reset for a fresh run.'});renderFeed();return}
-  const list=$('amendList');list.innerHTML='';
-  S.sim.d.amendments.forEach(a=>{
-    const flips=estimateFlips(a);
-    const b=el('button','amend',
-      `<div><b>${esc(a.label)}</b><div style="color:var(--ink-3);font-size:11.5px;margin-top:2px">${esc(a.detail)}</div></div>
-       <span class="fx"><b>≈${flips} flip</b>projected</span>`);
-    b.onclick=()=>{fork(a);closeModals()};
-    list.append(b);
-  });
-  $('interveneModal').classList.add('open');
-};
-$('customForkBtn').onclick=()=>{
-  const t=$('amendCustom').value.trim();if(!t)return;
-  const fx={};S.sim.d.cohorts.forEach(c=>{if(c.base<0)fx[c.name]=.35});
-  fork({label:t,detail:'custom amendment',fx});closeModals();
-};
-function estimateFlips(a){ // silent 4-round clone — cheap, deterministic
-  const r0=Math.min(S.sim.round,MAX_ROUNDS-4); // leave room to tick even post-completion
-  const c=cloneSim(S.sim);c.round=r0;c.applyAmendment(a);
-  for(let i=0;i<4;i++)c.tick();
-  const b=cloneSim(S.sim);b.round=r0;
-  for(let i=0;i<4;i++)b.tick();
-  return Math.max(0,b.tally().opp-c.tally().opp);
-}
-function cloneSim(sim){
-  const c=new Sim(sim.d,sim.seed,sim.count,sim.label);
-  c.round=sim.round;
-  c.personas.forEach((p,i)=>p.stance=sim.personas[i].stance);
-  c.history=sim.history.slice();
-  return c;
-}
-function fork(a){
-  S.alt=cloneSim(S.sim);
-  S.alt.label='amended';
-  S.alt.applyAmendment(a);
-  S.forkLabel=a.label;
-  enterForkUI();
-  pushEvent({kind:'sys',html:'⑂ <b>TIMELINE FORKED</b> at round '+S.sim.round+' — amendment: <b>'+a.label+'</b>. Both futures now simulate side by side.'});
-  renderAll();
-  if(!S.running)setRunning(true);
-}
+/* fork view chrome (shared by the convex fork path) */
 function enterForkUI(){
   $('mapCardB').style.display='flex';
   $('mapALabel').textContent='Baseline · no amendment';
@@ -448,41 +179,6 @@ function exitForkUI(){
 }
 
 /* ─── verdict ─── */
-$('verdictBtn').onclick=()=>{
-  const t=S.sim.tally(),ap=t.sup/t.n,op=t.opp/t.n;
-  const rows=S.sim.meanByCohort(),totInf=rows.reduce((a,x)=>a+x.inf,0);
-  const riskRow=rows.filter(x=>x.c.hurt).sort((a,b)=>a.mean-b.mean)[0]
-    ||rows.sort((a,b)=>a.mean-b.mean)[0];
-  const ranked=S.sim.d.amendments.map(a=>({a,flips:estimateFlips(a)}))
-    .sort((x,y)=>y.flips-x.flips);
-  let forkHtml='';
-  if(S.alt){const ta=S.alt.tally();
-    forkHtml=`<div class="vh"><div class="k">Amended fork</div>
-      <div class="v" style="color:var(--sup)">${pct(ta.sup/ta.n)}%</div>
-      <div class="d">approval · “${S.forkLabel}” · Δ ${pct(ta.sup/ta.n-ap)>=0?'+':''}${pct(ta.sup/ta.n-ap)} pts</div></div>`;
-  }
-  $('verdictBody').innerHTML=`
-    <h2>Verdict · round ${S.sim.round}</h2>
-    <div class="sub">${S.sim.d.title}</div>
-    <div class="verdict-hero">
-      <div class="vh"><div class="k">Predicted approval</div>
-        <div class="v" style="color:var(--sup)">${pct(ap)}%</div>
-        <div class="d">${t.sup} of ${t.n} personas support</div></div>
-      <div class="vh"><div class="k">Opposition</div>
-        <div class="v" style="color:var(--opp)">${pct(op)}%</div>
-        <div class="d">${S.sim.factions.filter(f=>f.side==='opp').length||'no'} organized opposing faction(s)</div></div>
-      ${forkHtml}
-    </div>
-    <div class="risk"><span class="tag">BIGGEST RISK</span><br>
-      <b>${riskRow.c.name}</b> — mean stance ${riskRow.mean.toFixed(2)}, ${pct(riskRow.inf/totInf)}% of network influence.
-      ${riskRow.c.hurt||'The most opposed cohort in the population.'}</div>
-    <div style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin-bottom:8px">Amendments ranked by projected opposition flipped</div>
-    ${ranked.map((r,i)=>`<div class="amend" style="cursor:default">
-      <div><b>${i+1}. ${r.a.label}</b><div style="color:var(--ink-3);font-size:11.5px;margin-top:2px">${r.a.detail}</div></div>
-      <span class="fx"><b>≈${r.flips} flip</b>projected</span></div>`).join('')}
-    <div class="foot"><button class="btn primary" data-close>Close</button></div>`;
-  $('verdictModal').classList.add('open');
-};
 
 /* modal close plumbing */
 function closeModals(){document.querySelectorAll('.overlay').forEach(o=>o.classList.remove('open'))}
@@ -510,235 +206,25 @@ function stanceColor(s,alpha=1){
   return`rgba(${r},${g},${bl},${alpha})`;
 }
 
-let bornAt=0;
-function materializeAnim(){bornAt=performance.now()}
 
-function drawMap(cv,sim,viewStances){
-  const ctx=cv.getContext('2d'),W=cv.width,H=cv.height,dpr=devicePixelRatio;
-  ctx.clearRect(0,0,W,H);
-  const st=viewStances||sim.stances();
-  const now=performance.now();
-  const px=i=>W/2+st[i]*W*.4;
-  const py=i=>H*.06+sim.pos[i].y*H*.78;
-  // center meridian
-  ctx.strokeStyle='rgba(255,255,255,.06)';ctx.lineWidth=1;
-  ctx.setLineDash([4*dpr,6*dpr]);
-  ctx.beginPath();ctx.moveTo(W/2,H*.03);ctx.lineTo(W/2,H*.9);ctx.stroke();
-  ctx.setLineDash([]);
-  // edges (faint)
-  ctx.lineWidth=Math.max(1,.7*dpr);
-  for(let i=0;i<sim.count;i++){
-    for(const j of sim.adj[i]){
-      if(j<i)continue;
-      const agree=1-Math.abs(st[i]-st[j])/2;
-      ctx.strokeStyle=`rgba(200,200,200,${.028+agree*.03})`;
-      ctx.beginPath();ctx.moveTo(px(i),py(i));ctx.lineTo(px(j),py(j));ctx.stroke();
-    }
-  }
-  // animated positions with wobble; nodes
-  for(let i=0;i<sim.count;i++){
-    const p=sim.personas[i],pos=sim.pos[i];
-    const tx=px(i)+Math.sin(now/1900+pos.jit)*2.4*dpr;
-    pos.x=pos.x?lerp(pos.x,tx,.07):tx;
-    const y=py(i)+Math.cos(now/2300+pos.jit)*2*dpr;
-    const born=clamp((now-bornAt-i*9)/380,0,1);
-    if(born<=0)continue;
-    const r=(2.6+p.inf*2.6)*dpr*born;
-    const glow=Math.abs(p.stance)>.6;
-    if(glow){ctx.fillStyle=stanceColor(st[i],.18);
-      ctx.beginPath();ctx.arc(pos.x,y,r*2.1,0,7);ctx.fill()}
-    ctx.fillStyle=stanceColor(st[i],.95*born);
-    ctx.beginPath();ctx.arc(pos.x,y,r,0,7);ctx.fill();
-    if(p.inf>1.4){ctx.strokeStyle='rgba(255,255,255,.5)';ctx.lineWidth=1*dpr;
-      ctx.beginPath();ctx.arc(pos.x,y,r+2*dpr,0,7);ctx.stroke()}
-    pos.sy=y;pos.sr=r; // for hit-testing
-  }
-}
 
 /* node popover (drill-down) */
-cvA.addEventListener('click',e=>nodeHit(e,cvA,S.sim));
-cvB.addEventListener('click',e=>nodeHit(e,cvB,()=>S.alt));
-function nodeHit(e,cv,simRef){
-  const sim=typeof simRef==='function'?simRef():simRef;
-  if(!sim)return;
-  const r=cv.getBoundingClientRect(),dpr=devicePixelRatio;
-  const mx=(e.clientX-r.left)*dpr,my=(e.clientY-r.top)*dpr;
-  let best=-1,bd=1e9;
-  for(let i=0;i<sim.count;i++){
-    const p=sim.pos[i];if(p.sy==null)continue;
-    const d=(p.x-mx)**2+(p.sy-my)**2;
-    if(d<bd){bd=d;best=i}
-  }
-  if(best<0||bd>(22*dpr)**2){$('pop').style.display='none';return}
-  const p=sim.personas[best],c=sim.d.cohorts[p.ci];
-  const hist=sim.history.map(h=>h[best]);
-  const spark=hist.map((v,i)=>`${(i/(Math.max(1,hist.length-1)))*100},${(1-(v+1)/2)*30+2}`).join(' ');
-  const pop=$('pop');
-  pop.innerHTML=`<div class="who"><b>${p.name}</b>
-      <span class="stance-chip" style="color:${stanceColor(p.stance)}">${p.stance>=0?'+':''}${p.stance.toFixed(2)}</span></div>
-    <span class="chip">${c.name}</span> ${p.inf>1.4?'<span class="chip">⭑ influencer</span>':''}
-    <div class="quote">“${sim.quote(p)}”</div>
-    <div style="font-size:10px;letter-spacing:.1em;color:var(--ink-3);font-weight:700">STANCE · R0 → R${sim.round}</div>
-    <svg viewBox="0 0 100 34" preserveAspectRatio="none">
-      <line x1="0" y1="17" x2="100" y2="17" stroke="var(--baseline)" stroke-width=".5"/>
-      <polyline points="${spark}" fill="none" stroke="${stanceColor(p.stance)}" stroke-width="1.6" vector-effect="non-scaling-stroke"/></svg>`;
-  pop.style.display='block';
-  const pw=260;
-  pop.style.left=Math.min(innerWidth-pw-12,e.clientX+14)+'px';
-  pop.style.top=Math.min(innerHeight-190,e.clientY-20)+'px';
-}
 document.addEventListener('click',e=>{
   if(!e.target.closest('#pop')&&!e.target.closest('canvas'))$('pop').style.display='none'});
 
 /* tallies */
-function renderTally(){
-  const viewRound=S.scrubbed?+$('scrub').value:S.sim.round;
-  const t=S.sim.tally(S.sim.history[viewRound]);
-  const rows=[['Support',t.sup,'var(--sup)'],['Neutral',t.neu,'var(--neu)'],['Oppose',t.opp,'var(--opp)']];
-  $('tallyRows').innerHTML=rows.map(([lab,n,col])=>`
-    <div class="tally-row"><i style="width:10px;height:10px;border-radius:3px;background:${col}"></i>
-      <span>${lab}</span><span class="bar"><i style="width:${n/t.n*100}%;background:${col}"></i></span>
-      <span class="num"><b>${pct(n/t.n)}%</b> · ${n}</span></div>`).join('');
-  $('apprChip').textContent=pct(t.sup/t.n)+'% approve';
-  if(S.alt){
-    const ta=S.alt.tally(S.alt.history[viewRound]||S.alt.history[S.alt.round]);
-    const d=pct(ta.sup/ta.n)-pct(t.sup/t.n);
-    $('tallyFork').innerHTML=`<b style="color:var(--ink)">⑂ Fork comparison</b>
-      <div class="cmp"><span>Baseline approval</span><b>${pct(t.sup/t.n)}%</b></div>
-      <div class="cmp"><span>Amended approval</span><b style="color:var(--sup)">${pct(ta.sup/ta.n)}% (${d>=0?'+':''}${d} pts)</b></div>`;
-  }
-}
 
 /* opinion-drift river (stacked shares, 2px surface gaps, hover crosshair) */
-function renderRiver(){
-  const svg=$('river'),W=svg.clientWidth||330,Hh=128;
-  svg.setAttribute('viewBox',`0 0 ${W} ${Hh}`);
-  const hist=S.sim.history,n=hist.length;
-  if(n<1){svg.innerHTML='';return}
-  const padL=6,padR=44,padT=6,padB=16,iw=W-padL-padR,ih=Hh-padT-padB;
-  const shares=hist.map(h=>{const t=S.sim.tally(h);return[t.sup/t.n,t.neu/t.n,t.opp/t.n]});
-  const X=i=>padL+(n===1?iw/2:i/(n-1)*iw);
-  const Y=v=>padT+(1-v)*ih;
-  function band(lo,hi,color){
-    let d='M'+X(0)+','+Y(hi(0));
-    for(let i=1;i<n;i++)d+='L'+X(i)+','+Y(hi(i));
-    for(let i=n-1;i>=0;i--)d+='L'+X(i)+','+Y(lo(i));
-    return`<path d="${d}Z" fill="${color}" stroke="var(--surface)" stroke-width="2"/>`;
-  }
-  const sup=i=>shares[i][0],neu=i=>shares[i][1];
-  let out=band(i=>1-sup(i),i=>1,'var(--sup)')
-        +band(i=>1-sup(i)-neu(i),i=>1-sup(i),'var(--neu)')
-        +band(i=>0,i=>1-sup(i)-neu(i),'var(--opp)');
-  // right-edge direct labels
-  const last=shares[n-1];
-  const yy=[1-last[0]/2,1-last[0]-last[1]/2,1-last[0]-last[1]-last[2]/2];
-  ['Support','Neutral','Oppose'].forEach((lab,i)=>{
-    if(last[i]<.04)return;
-    out+=`<text x="${W-padR+5}" y="${Y(yy[i])+3}" font-size="9.5" fill="var(--ink-2)" font-family="var(--font)">${pct(last[i])}%</text>`;
-  });
-  out+=`<text x="${padL}" y="${Hh-4}" font-size="9" fill="var(--ink-3)">R0</text>
-        <text x="${padL+iw-14}" y="${Hh-4}" font-size="9" fill="var(--ink-3)">R${n-1}</text>`;
-  out+=`<line id="riverX" x1="0" x2="0" y1="${padT}" y2="${padT+ih}" stroke="var(--ink-3)" stroke-width="1" opacity="0"/>`;
-  svg.innerHTML=out;
-  // hover layer
-  svg.onmousemove=e=>{
-    const r=svg.getBoundingClientRect();
-    const i=clamp(Math.round((e.clientX-r.left-padL)/(iw/(Math.max(1,n-1)))),0,n-1);
-    const x=X(i),cross=svg.querySelector('#riverX');
-    cross.setAttribute('x1',x);cross.setAttribute('x2',x);cross.setAttribute('opacity','.6');
-    const tip=$('riverTip'),s=shares[i];
-    tip.style.display='block';
-    tip.innerHTML=`<b>Round ${i}</b><br>
-      <span style="color:var(--sup)">▮</span> Support <b>${pct(s[0])}%</b> ·
-      <span style="color:#8a8983">▮</span> Neutral <b>${pct(s[1])}%</b> ·
-      <span style="color:var(--opp)">▮</span> Oppose <b>${pct(s[2])}%</b>`;
-    const body=svg.parentElement.getBoundingClientRect();
-    tip.style.left=clamp(e.clientX-body.left-70,0,body.width-190)+'px';
-    tip.style.top='-8px';
-  };
-  svg.onmouseleave=()=>{$('riverTip').style.display='none';
-    const c=svg.querySelector('#riverX');if(c)c.setAttribute('opacity','0')};
-}
 
 /* fork divergence — two approval lines, direct-labeled */
-function renderDiverge(){
-  if(!S.alt)return;
-  const svg=$('diverge'),W=svg.clientWidth||330,Hh=104;
-  svg.setAttribute('viewBox',`0 0 ${W} ${Hh}`);
-  const padL=6,padR=64,padT=8,padB=14,iw=W-padL-padR,ih=Hh-padT-padB;
-  const a=S.sim.history.map(h=>S.sim.tally(h)),b=S.alt.history.map(h=>S.alt.tally(h));
-  const n=a.length;
-  const X=i=>padL+(n===1?iw/2:i/(n-1)*iw),Y=v=>padT+(1-v)*ih;
-  const line=(arr,col,w)=>'<polyline fill="none" stroke="'+col+'" stroke-width="'+w+'" points="'
-    +arr.map((t,i)=>X(i)+','+Y(t.sup/t.n)).join(' ')+'"/>';
-  const la=a[n-1],lb=b[b.length-1];
-  svg.innerHTML=
-    `<line x1="${padL}" x2="${padL+iw}" y1="${Y(.5)}" y2="${Y(.5)}" stroke="var(--grid)" stroke-width="1"/>`
-    +line(a,'var(--ink-3)',1.6)+line(b,'var(--sup)',2)
-    +`<circle cx="${X(n-1)}" cy="${Y(la.sup/la.n)}" r="3" fill="var(--ink-3)"/>
-      <circle cx="${X(b.length-1)}" cy="${Y(lb.sup/lb.n)}" r="3" fill="var(--sup)"/>
-      <text x="${X(n-1)+7}" y="${Y(la.sup/la.n)+3}" font-size="9.5" fill="var(--ink-3)">base ${pct(la.sup/la.n)}%</text>
-      <text x="${X(b.length-1)+7}" y="${Y(lb.sup/lb.n)+3}" font-size="9.5" fill="var(--sup)">fork ${pct(lb.sup/lb.n)}%</text>`;
-}
 
 /* factions strips */
-function renderFactions(){
-  const put=(box,sim)=>{
-    box.innerHTML='';
-    (sim?sim.factions:[]).forEach(f=>{
-      const c=el('div','faction',`<b>${esc(f.name)}</b>${f.n} personas · “${esc(f.arg)}”`);
-      c.style.borderLeftColor=f.side==='opp'?'var(--opp)':'var(--sup)';
-      box.append(c);
-    });
-  };
-  put($('factionsA'),S.sim);put($('factionsB'),S.alt);
-}
 
 /* feed */
-function renderFeed(){
-  const feed=$('feed');
-  const have=feed.children.length;
-  const evs=S.events.slice(-42);
-  if(S.mirror){feed.innerHTML='';} // mirrors rebuild (cheap, small list)
-  const start=S.mirror?0:Math.max(0,evs.length-(evs.length- (have)));
-  feed.innerHTML='';
-  [...evs].reverse().forEach(e=>{
-    const d=el('div','ev '+e.kind);
-    if(e.kind==='quote'&&e.p){
-      d.innerHTML=`<div class="who"><b>${e.p.name}</b><span class="chip">${e.p.cohort}</span>
-        <span class="stance-chip" style="color:${stanceColor(e.p.stance)}">${e.p.stance>=0?'+':''}${e.p.stance.toFixed(2)}</span></div>${e.html}
-        <div style="font-size:10px;color:var(--ink-3);margin-top:3px">round ${e.round}</div>`;
-    }else d.innerHTML=e.html;
-    feed.append(d);
-  });
-}
 
 /* scrubber */
 const scrub=$('scrub');
-scrub.oninput=()=>{
-  S.scrubbed=+scrub.value<S.sim.round;
-  $('liveBtn').style.display=S.scrubbed?'inline-flex':'none';
-  renderFrame();
-};
-$('liveBtn').onclick=()=>{S.scrubbed=false;scrub.value=S.sim.round;
-  $('liveBtn').style.display='none';renderFrame()};
 
-function renderFrame(){
-  const vr=S.scrubbed?+scrub.value:S.sim.round;
-  $('scrubLab').textContent='round '+vr+' / '+S.sim.round+(S.scrubbed?' · replay':'');
-  $('roundPill').textContent='ROUND '+S.sim.round+'/'+MAX_ROUNDS;
-  drawMap(cvA,S.sim,S.scrubbed?S.sim.history[vr]:null);
-  if(S.alt)drawMap(cvB,S.alt,S.scrubbed?(S.alt.history[vr]||null):null);
-  renderTally();
-}
-function renderAll(){
-  if(!S.scrubbed){scrub.max=S.sim.round;scrub.value=S.sim.round}
-  renderFrame();
-  renderRiver();
-  renderDiverge();
-  renderFactions();
-  renderFeed();
-}
 
 /* ambient landing background — a quiet population slowly polarizing */
 (function bgnet(){
@@ -766,28 +252,19 @@ function renderAll(){
     for(let i=0;i<N;i++)for(let j=i+1;j<N;j++){
       const dx=(pts[i].x-pts[j].x)*W,dy=(pts[i].y-pts[j].y)*H,d2=dx*dx+dy*dy;
       if(d2<max){
-        ctx.strokeStyle=`rgba(150,165,200,${.055*(1-d2/max)})`;
+        ctx.strokeStyle=`rgba(160,160,160,${.05*(1-d2/max)})`;
         ctx.lineWidth=dpr*.7;
         ctx.beginPath();ctx.moveTo(pts[i].x*W,pts[i].y*H);ctx.lineTo(pts[j].x*W,pts[j].y*H);ctx.stroke();
       }
     }
     for(const p of pts){
-      const col=p.side>0?'57,135,229':'230,103,103';
-      ctx.fillStyle=`rgba(${col},.45)`;
+      const col=p.side>0?'218,41,28':'150,150,150';
+      ctx.fillStyle=`rgba(${col},${p.side>0?.55:.4})`;
       ctx.beginPath();ctx.arc(p.x*W,p.y*H,p.r*dpr,0,7);ctx.fill();
     }
   })();
 })();
 
-/* continuous canvas animation */
-(function raf(){
-  if($('room').classList.contains('active')&&S.sim){
-    const vr=S.scrubbed?+scrub.value:S.sim.round;
-    drawMap(cvA,S.sim,S.scrubbed?S.sim.history[vr]:null);
-    if(S.alt)drawMap(cvB,S.alt,S.scrubbed?(S.alt.history[vr]||null):null);
-  }
-  requestAnimationFrame(raf);
-})();
 
 /* ═══════════════════════════ HARNESS CONSOLE (Convex-backed) ═══════════════════════════ */
 const QUERY_DEFAULTS={rto:'return to office mandate',fare:'transit fare increase',ai:'AI homework policy university'};
@@ -1229,7 +706,11 @@ cvB.addEventListener('click',e=>{if(W.B&&W.B.run)cNodeHit(e,cvB,W.B,H.forkId)});
 Object.assign(window,{W,enterWarRoom});
 
 /* neutralize legacy local-engine paths (deleted for good in cleanup task) */
-setRunning=(on)=>{if(on&&W.A.run&&W.A.run.status==='ready')client.mutation(api.sim.start,{runId:H.runId})};
+// space bar = start the engine (was the legacy setRunning shim)
+window.addEventListener('keydown',e=>{
+  if(e.code==='Space'&&$('room').classList.contains('active')&&!e.target.closest('input,textarea')
+     &&W.A.run&&W.A.run.status==='ready'){e.preventDefault();client.mutation(api.sim.start,{runId:H.runId}).catch(console.error)}
+});
 $('verdictBtn').onclick=()=>cToast('Verdict — landing in the next build step.');
 
 /* verdict on convex — approval, risk, ranked counterfactual flips */
@@ -1469,7 +950,7 @@ function bindMap(cv,view){
 }
 
 /* factions strip now reads adapters, not the retired local sims */
-renderFactions=function(){
+const renderFactions=function(){
   const put=(box,ad,runId)=>{
     box.innerHTML='';
     (ad?ad.factions:[]).forEach(f=>{
@@ -1833,3 +1314,59 @@ function drawFan(cf){
   for(let r=0;r<=R2;r++){const v2=q(perRound(r),.5);r===0?x.moveTo(X(r),Y(v2)):x.lineTo(X(r),Y(v2))}
   x.stroke();
 }
+
+/* ═══ FERRARI CHROME: nav links, theme switch, tachometer, hero CTAs ═══ */
+// theme (persisted): dark cinema ↔ light editorial
+(function theme(){
+  const saved=localStorage.getItem('agora-theme');
+  if(saved==='light')document.documentElement.dataset.theme='light';
+})();
+function toggleTheme(){
+  const root=document.documentElement;
+  const light=root.dataset.theme==='light';
+  if(light){delete root.dataset.theme;localStorage.setItem('agora-theme','dark')}
+  else{root.dataset.theme='light';localStorage.setItem('agora-theme','light')}
+  document.querySelectorAll('.theme-toggle').forEach(b=>{b.textContent=root.dataset.theme==='light'?'◐':'◑'});
+}
+// one nav strip, injected into every top bar — one-click access everywhere
+(function navs(){
+  const LINKS=[['Home',()=>{unsubAll();history.replaceState(null,'',location.pathname);showView('setup')}],
+    ['Harness',()=>openHarness()],
+    ['War room',()=>{if(H.runId)enterWarRoom(H.runId)},'needs-run'],
+    ['Settings',()=>openSettings()]];
+  document.querySelectorAll('#setup .setup-nav, #harness .topbar, #room .topbar, #settings .setup-nav').forEach(bar=>{
+    const wrap=el('nav','nav-links');
+    LINKS.forEach(([label,go,cls])=>{
+      const a=el('a','',label);
+      if(cls)a.dataset.gate=cls;
+      a.onclick=e=>{e.preventDefault();go()};
+      wrap.append(a);
+    });
+    const logo=bar.querySelector('.logo');
+    logo?logo.after(wrap):bar.prepend(wrap);
+    const t=el('button','btn ghost theme-toggle','◑');
+    t.title='theme';t.onclick=toggleTheme;
+    bar.append(t);
+  });
+  if(document.documentElement.dataset.theme==='light')
+    document.querySelectorAll('.theme-toggle').forEach(b=>b.textContent='◐');
+  setInterval(()=>{document.querySelectorAll('[data-gate="needs-run"]')
+    .forEach(a=>a.classList.toggle('dis',!H.runId))},1500);
+})();
+// tachometer: sweep on load, redline pulse on hover of the primary CTA
+(function tach(){
+  const t=$('tach');if(!t)return;
+  for(let i=0;i<36;i++)t.append(el('i',''));
+  const ticks=[...t.children];
+  let sweep=0;
+  const iv=setInterval(()=>{
+    if(sweep<ticks.length)ticks[sweep++].classList.add('lit');
+    else{clearInterval(iv);
+      setTimeout(()=>ticks.forEach((x,i)=>setTimeout(()=>x.classList.remove('lit'),i*12)),400);
+      $('tachLabel').textContent='Engine warm · pick a decision below';}
+  },28);
+  const glide=id=>{$('setup').scrollTop=$(id).offsetTop-72};   // css scroll-behavior animates
+  $('heroStart').onclick=()=>{glide('garageBand');
+    ticks.slice(0,12).forEach((x,i)=>setTimeout(()=>x.classList.add('lit'),i*20))};
+  $('heroRuns').onclick=()=>glide('pitwallBand');
+})();

@@ -327,6 +327,154 @@
   .gh-link{padding:8px 10px}.gh-link svg{display:block}
   kbd{background:var(--surface-3);border:1px solid var(--ring);border-radius:5px;padding:1px 6px;
     font-family:inherit;font-size:11px}
+
+  /* ═══════════ FERRARI SKIN — cascade override layer (design tokens last = win) ═══════════ */
+  :root{
+    --page:#181818; --surface:#181818; --surface-2:#232323; --surface-3:#303030;
+    --ink:#ffffff; --ink-2:#969696; --ink-3:#666666;
+    --grid:#2a2a2a; --baseline:#303030; --ring:#303030;
+    --rosso:#da291c; --rosso-active:#b01e0a;
+    --radius:0px;
+    --shadow-soft:0 4px 8px rgba(0,0,0,.35);
+  }
+  [data-theme="light"]{
+    --page:#ffffff; --surface:#ffffff; --surface-2:#f7f7f7; --surface-3:#ebebeb;
+    --ink:#181818; --ink-2:#4a4a4a; --ink-3:#8f8f8f;
+    --grid:#e5e5e5; --baseline:#d2d2d2; --ring:#d2d2d2;
+    --shadow-soft:0 4px 8px rgba(0,0,0,.10);
+  }
+  body::before{background:none}
+  [data-theme="light"] .logo .mark{background:var(--rosso)}
+  .logo .mark{background:var(--rosso);border-radius:0}
+  .logo{letter-spacing:.18em}
+
+  /* buttons — sharp, uppercase, tracked; the Ferrari CTA voice */
+  .btn{border-radius:0;text-transform:uppercase;letter-spacing:1.2px;font-weight:700;
+    font-size:12px;padding:11px 20px;border:1px solid var(--ring);background:transparent;
+    transition:background .18s,color .18s,border-color .18s,transform .12s,box-shadow .18s}
+  .btn:hover{background:var(--ink);color:var(--page);border-color:var(--ink);transform:none}
+  .btn.primary{background:var(--rosso);border-color:var(--rosso);color:#fff}
+  .btn.primary:hover{background:linear-gradient(180deg,#a00c01,#da291c 64%);border-color:#a00c01;color:#fff}
+  .btn.primary:active{background:var(--rosso-active)}
+  .btn.ghost{border-color:transparent}
+  .btn.ghost:hover{border-color:var(--ink)}
+  .btn.danger{border-color:rgba(218,41,28,.6);color:#e8968f}
+
+  /* cards — sharp, hairline, brightness-step elevation */
+  .card{border-radius:0;border:1px solid var(--ring);background:var(--surface-2)}
+  .kpi,.decision-card,.ground-card,.set-card{border-radius:0}
+  .sample{border-radius:0}
+  input[type=text],input[type=password],textarea,#decisionText,#decisionTitle,#xImport,.src-row input{border-radius:4px!important}
+  .amend,.council-row,.ev{border-radius:0}
+  .modal{border-radius:0}
+  .vh{border-radius:0}
+  .faction{border-radius:0}
+
+  /* 64px nav band with uppercase links */
+  .setup-nav{height:64px;padding:0;border-bottom:1px solid var(--ring);max-width:none;
+    padding:0 32px;align-items:center;position:sticky;top:0;background:var(--page);z-index:20}
+  .topbar{height:64px;background:var(--page);border-bottom:1px solid var(--ring);backdrop-filter:none}
+  .nav-links{display:flex;gap:26px;margin-left:40px;flex:1}
+  .nav-links a{font-size:12px;font-weight:600;letter-spacing:.65px;text-transform:uppercase;
+    color:var(--ink-2);text-decoration:none;position:relative;padding:6px 0;cursor:pointer}
+  .nav-links a:hover{color:var(--ink)}
+  .nav-links a::after{content:"";position:absolute;left:0;right:100%;bottom:0;height:2px;
+    background:var(--rosso);transition:right .22s ease}
+  .nav-links a:hover::after{right:0}
+  .nav-links a.dis{opacity:.35;pointer-events:none}
+
+  /* ── landing: cinema hero ── */
+  #setup{padding:0 0 64px}
+  .hero-cinema{position:relative;width:100%;min-height:calc(100vh - 64px);display:flex;
+    flex-direction:column;justify-content:center;align-items:flex-start;
+    padding:96px 64px 64px;overflow:hidden}
+  .hero-cinema .kicker{font-size:12px;font-weight:600;letter-spacing:2.2px;text-transform:uppercase;
+    color:var(--rosso);margin-bottom:24px;animation:ignite .8s .1s ease both}
+  .hero-cinema h1{font-size:clamp(40px,6.4vw,84px);font-weight:500;line-height:1.05;
+    letter-spacing:-1.6px;color:var(--ink);max-width:1100px;text-wrap:balance;
+    animation:ignite .9s .25s ease both}
+  .hero-cinema h1 .rosso{color:var(--rosso)}
+  .hero-cinema .sub{margin-top:24px;font-size:15px;font-weight:400;line-height:1.6;
+    color:var(--ink-2);max-width:560px;animation:ignite .9s .45s ease both}
+  .hero-ctas{display:flex;gap:16px;margin-top:48px;animation:ignite .9s .6s ease both}
+  .hero-ctas .btn{height:48px;padding:0 32px;font-size:14px;letter-spacing:1.4px;display:inline-flex;align-items:center}
+  @keyframes ignite{from{opacity:0;transform:translateY(26px)}to{opacity:1;transform:none}}
+  /* tachometer sweep */
+  .tach{display:flex;gap:5px;margin-top:56px;align-items:flex-end;animation:ignite .9s .75s ease both}
+  .tach i{width:3px;height:12px;background:var(--surface-3)}
+  .tach i:nth-child(6n){height:20px}
+  .tach i.lit{background:var(--rosso)}
+  .tach-label{font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--ink-3);margin-top:10px}
+
+  /* spec band — 80px numerals */
+  .spec-band{display:grid;grid-template-columns:repeat(3,1fr);border-top:1px solid var(--ring);
+    border-bottom:1px solid var(--ring)}
+  .spec-cell{padding:48px 64px;border-right:1px solid var(--ring)}
+  .spec-cell:last-child{border-right:none}
+  .spec-cell .num{font-size:clamp(44px,5.5vw,80px);font-weight:700;line-height:1;
+    letter-spacing:-1.6px;color:var(--ink);font-variant-numeric:tabular-nums}
+  .spec-cell .num em{font-style:normal;color:var(--rosso)}
+  .spec-cell .lab{font-size:11px;font-weight:600;letter-spacing:1.1px;text-transform:uppercase;
+    color:var(--ink-3);margin-top:12px}
+  .spec-cell{transition:background .25s}
+  .spec-cell:hover{background:var(--surface-2)}
+
+  /* editorial bands */
+  .band{max-width:1280px;margin:0 auto;padding:96px 64px 0;width:100%}
+  .band-title{font-size:11px;font-weight:600;letter-spacing:1.6px;text-transform:uppercase;
+    color:var(--ink-3);margin-bottom:8px}
+  .band h2{font-size:36px;font-weight:500;letter-spacing:-.36px;color:var(--ink);margin-bottom:40px}
+  .band h2 .rosso{color:var(--rosso)}
+
+  /* feature cards (decision garage) — red-bar hover reveal */
+  .samples-row{max-width:none;margin:0 0 24px;animation:none}
+  .sample{position:relative;background:var(--surface-2);border:1px solid var(--ring);
+    padding:28px 24px 24px;overflow:hidden;transition:transform .22s,box-shadow .22s,border-color .22s}
+  .sample::before{content:"";position:absolute;top:0;left:0;right:0;height:3px;
+    background:var(--rosso);transform:scaleX(0);transform-origin:left;transition:transform .28s ease}
+  .sample:hover{transform:translateY(-4px);box-shadow:var(--shadow-soft);border-color:var(--ring)}
+  .sample:hover::before{transform:scaleX(1)}
+  .sample.sel{border-color:var(--rosso);box-shadow:none;background:var(--surface-2)}
+  .sample.sel::before{transform:scaleX(1)}
+  .sample .ic{border-radius:0;background:var(--surface-3);border:none}
+  .sample .pick{border-radius:0}
+  .sample.sel .pick{background:var(--rosso);border-color:var(--rosso)}
+  .setup-grid{max-width:none;margin:0;animation:none}
+  .decision-card,.ground-card{background:var(--surface-2);backdrop-filter:none}
+  .setup-cta{align-items:flex-start;margin-top:32px;animation:none}
+  .setup-cta .btn.primary{height:48px;padding:0 32px;font-size:14px;letter-spacing:1.4px;
+    display:inline-flex;align-items:center;border-radius:0;animation:none;box-shadow:none}
+  .setup-cta .btn.primary:hover{box-shadow:0 8px 24px rgba(218,41,28,.35)}
+  .feature-pills{justify-content:flex-start;animation:none}
+
+  /* dashboard as editorial band */
+  .dash{max-width:none;margin:0;animation:none}
+  .kpi{background:var(--surface-2);backdrop-filter:none;transition:background .2s}
+  .kpi:hover{background:var(--surface-3)}
+  .kpi .v{font-weight:700;letter-spacing:-.8px}
+  .run-row{transition:background .18s;border-left:2px solid transparent}
+  .run-row:hover{background:var(--surface-3);border-left-color:var(--rosso)}
+  .runs-card,.src-health{background:var(--surface-2);backdrop-filter:none}
+
+  /* war-room canvas plates stay cinematic dark even in light theme */
+  [data-theme="light"] .map-card{background:#181818;border-color:#303030}
+  [data-theme="light"] .map-card .card-h{color:#8f8f8f}
+  [data-theme="light"] #mcFan{background:#181818!important;border-color:#303030!important}
+  [data-theme="light"] .hero-cinema{background:#181818}
+  [data-theme="light"] .hero-cinema .sub{color:#969696}
+  [data-theme="light"] .hero-cinema h1{color:#fff}
+  [data-theme="light"] #bgnet{opacity:1}
+
+  /* status dots / pills stay pills (the one permitted pill geometry) */
+  .pill,.chip,.fpill{border-radius:9999px}
+  @media(max-width:900px){
+    .hero-cinema{padding:64px 24px}
+    .spec-band{grid-template-columns:1fr}
+    .spec-cell{border-right:none;border-bottom:1px solid var(--ring);padding:32px 24px}
+    .band{padding:64px 24px 0}
+    .nav-links{display:none}
+  }
+
 </style>
 </head>
 <body>
@@ -343,25 +491,39 @@
       <button class="btn ghost" data-settings title="settings">⚙</button>
     </div>
   </div>
-  <div class="setup-hero">
-    <div class="hero-badge">◈ Multi-agent consequence simulation</div>
-    <h1>Every decision gets debated after it ships.<br>Watch the debate <em>before</em>.</h1>
-    <p>Paste a decision. Agora materializes a synthetic population grounded in real feedback,
-    lets them argue across a social graph, and streams the fallout — factions, dissent,
-    counterfactual futures — live to every open screen.</p>
-    <div class="hero-stats">
-      <div><b>2,000</b><span>synthetic stakeholders max</span></div>
-      <div><b>2</b><span>futures per fork</span></div>
-      <div><b>0</b><span>refreshes needed</span></div>
+  <div class="hero-cinema">
+    <div class="kicker">Consequence Engine · Multi-Agent Simulation</div>
+    <h1>Every decision gets debated after it ships.<br>Watch the debate <span class="rosso">before</span>.</h1>
+    <div class="sub">Paste a decision. Agora grows a synthetic population from real social posts,
+    lets it argue across a social graph, and streams the fallout — factions, dissent,
+    counterfactual futures — live to every open screen.</div>
+    <div class="hero-ctas">
+      <button class="btn primary" id="heroStart">Start the engine</button>
+      <button class="btn" id="heroRuns">Live simulations</button>
     </div>
+    <div class="tach" id="tach"></div>
+    <div class="tach-label" id="tachLabel">Ignition ready</div>
   </div>
-  <div class="resume-banner" id="resumeBanner">
+  <div class="spec-band">
+    <div class="spec-cell"><div class="num">2,<em>000</em></div><div class="lab">Synthetic stakeholders per grid</div></div>
+    <div class="spec-cell"><div class="num"><em>40</em></div><div class="lab">Monte Carlo futures per verdict</div></div>
+    <div class="spec-cell"><div class="num">0</div><div class="lab">Refreshes needed — every screen live</div></div>
+  </div>
+  <div class="band" id="garageBand">
+    <div class="band-title">The Garage</div>
+    <h2>Pick a decision. <span class="rosso">Build the grid.</span></h2>
+  </div>
+  <div class="resume-banner" id="resumeBanner" style="margin:16px 64px">
     <span>⏻</span><span style="flex:1">An interrupted run was found — the engine is durable.
     Resume exactly where it stopped?</span>
     <button class="btn" id="resumeBtn">Resume run</button>
     <button class="btn ghost" id="discardBtn">Discard</button>
   </div>
-  <div class="dash" id="dash" style="display:none">
+  <div class="band" id="pitwallBand" style="padding-top:64px">
+    <div class="band-title">Pit Wall</div>
+    <h2>Live telemetry.</h2>
+  </div>
+  <div class="dash" id="dash" style="display:none;padding:0 64px">
     <div class="kpi-row">
       <div class="card kpi"><div class="k">Corpus</div><div class="v" id="kPosts">—</div><div class="d">real posts, deduped</div></div>
       <div class="card kpi"><div class="k">Runs</div><div class="v" id="kRuns">—</div><div class="d" id="kRunsD">completed simulations</div></div>
@@ -378,8 +540,8 @@
       <div id="srcHealth"><div style="padding:8px 14px;font-size:12px;color:var(--ink-3)">no sources fetched yet</div></div>
     </div>
   </div>
-  <div class="samples-row" id="samples"></div>
-  <div class="setup-grid">
+  <div class="samples-row" id="samples" style="padding:0 64px"></div>
+  <div class="setup-grid" style="padding:0 64px">
     <div class="card decision-card">
       <label>1 · The decision under consequence review</label>
       <input id="decisionTitle" spellcheck="false" placeholder="Decision title — e.g. Adopt Gemini over ChatGPT company-wide"
@@ -409,7 +571,7 @@
       </div>
     </div>
   </div>
-  <div class="setup-cta">
+  <div class="setup-cta" style="padding:0 64px">
     <button class="btn primary" id="materializeBtn">Materialize personas →</button>
     <span class="hint">every viewer sees the same live state · zero websocket code</span>
     <div class="feature-pills">
