@@ -192,7 +192,7 @@
     border-bottom:1px solid var(--ring);background:rgba(26,26,25,.75);backdrop-filter:blur(8px)}
   .topbar .title{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
   .topbar .title b{font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .topbar .title span{font-size:11px;color:var(--ink-3)}
+  .topbar .title span{font-size:11px;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
   .roundpill{font-variant-numeric:tabular-nums}
   .main{flex:1;display:flex;gap:12px;padding:12px;min-height:0}
   .map-col{flex:1.55;display:flex;flex-direction:column;gap:12px;min-width:0}
@@ -322,7 +322,7 @@
     lets them argue across a social graph, and streams the fallout — factions, dissent,
     counterfactual futures — live to every open screen.</p>
     <div class="hero-stats">
-      <div><b>150+</b><span>synthetic stakeholders</span></div>
+      <div><b>2,000</b><span>synthetic stakeholders max</span></div>
       <div><b>2</b><span>futures per fork</span></div>
       <div><b>0</b><span>refreshes needed</span></div>
     </div>
@@ -354,6 +354,9 @@
   <div class="setup-grid">
     <div class="card decision-card">
       <label>1 · The decision under consequence review</label>
+      <input id="decisionTitle" spellcheck="false" placeholder="Decision title — e.g. Adopt Gemini over ChatGPT company-wide"
+        style="width:100%;background:var(--surface-2);border:1px solid var(--ring);border-radius:9px;color:var(--ink);
+        font-family:inherit;font-size:14px;font-weight:600;padding:10px 14px;outline:none;margin-bottom:9px">
       <textarea id="decisionText" spellcheck="false"></textarea>
     </div>
     <div class="card ground-card">
@@ -369,8 +372,8 @@
       <div>
         <label style="display:block;font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin-bottom:10px">3 · Population size</label>
         <div class="slider-row">
-          <input type="range" id="popSize" min="60" max="220" step="10" value="150">
-          <output id="popOut">150</output>
+          <input type="range" id="popSize" min="200" max="2000" step="100" value="1800">
+          <output id="popOut">1800</output>
         </div>
         <div style="font-size:11.5px;color:var(--ink-3);margin-top:8px">
           fan-out runs through a bounded workpool — 20 concurrent persona agents

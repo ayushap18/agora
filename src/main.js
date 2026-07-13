@@ -225,7 +225,7 @@ class Sim{
 
 /* ─── app state ─── */
 const S={sim:null,alt:null,running:false,speed:1,view:0,scrubbed:false,
-  events:[],decisionIdx:0,seed:0,count:150,mirror:false,forkLabel:''};
+  events:[],decisionIdx:0,seed:0,count:1800,mirror:false,forkLabel:''};
 const $=id=>document.getElementById(id);
 const el=(t,cls,html)=>{const e=document.createElement(t);if(cls)e.className=cls;if(html!=null)e.innerHTML=html;return e};
 
@@ -236,12 +236,15 @@ DECISIONS.forEach((d,i)=>{
   const b=el('button','sample',
     `<span class="pick">✓</span><div class="ic">${ICONS[d.id]||'◈'}</div><b>${d.title}</b>
      <div class="meta">${d.sub}<br>${d.cohorts.length} cohorts · ${d.amendments.length} draft amendments</div>`);
-  b.onclick=()=>{S.decisionIdx=i;$('decisionText').value=d.text;
+  b.onclick=()=>{S.decisionIdx=i;$('decisionText').value=d.text;$('decisionTitle').value=d.title;
     [...samplesBox.children].forEach((c,j)=>c.classList.toggle('sel',j===i));};
   samplesBox.append(b);
 });
 samplesBox.children[0].click();
-$('popSize').oninput=e=>{$('popOut').textContent=e.target.value;S.count=+e.target.value};
+$('popSize').oninput=e=>{$('popOut').textContent=e.target.value;S.count=+e.target.value;
+  const pb=$('populateBtn');
+  if(pb&&!pb.textContent.includes('✓')&&!pb.textContent.includes('…'))
+    pb.textContent=`③ Build network — ${S.count} personas`;};
 
 const dz=$('dropzone');
 dz.onclick=()=>$('fileInput').click();
@@ -802,9 +805,11 @@ function showView(id){
 
 function openHarness(){
   showView('harness');
+  H.harnessTs=Date.now();   // distill scopes to posts fetched in this session
   const d=DECISIONS[S.decisionIdx];
-  $('harnessSub').textContent=d.title;
-  const q=QUERY_DEFAULTS[d.id]||d.title;
+  const title=$('decisionTitle').value.trim()||d.title;
+  $('harnessSub').textContent=title;
+  const q=title===d.title?(QUERY_DEFAULTS[d.id]||title):title;
   $('srcRows').innerHTML='';
   PLATFORMS.forEach(p=>{
     const row=el('div','src-row',
@@ -876,12 +881,17 @@ $('distillBtn').onclick=async()=>{
   const d=DECISIONS[S.decisionIdx];
   $('distillBtn').disabled=true;$('distillBtn').textContent='② Distilling…';
   try{
+    const title=$('decisionTitle').value.trim()||d.title;
+    const amendments=(title===d.title?d.amendments:[
+      {label:'Exempt the most-affected group',detail:'full carve-out for the hardest-hit cohort'},
+      {label:'Soften the rollout',detail:'phase in gradually with broad concessions'},
+      {label:'Compensate the quietly hurt',detail:'targeted support for the voiceless cohort'},
+    ]).map(a=>({label:a.label,detail:a.detail,fx:{}}));
     H.decisionDocId=await client.mutation(api.distill.seedDecision,{
-      title:d.title,body:$('decisionText').value.trim()||d.text,
-      amendments:d.amendments.map(a=>({label:a.label,detail:a.detail,fx:{}}))});
+      title,body:$('decisionText').value.trim()||d.text,amendments});
     if(cohortUnsub)cohortUnsub();
     cohortUnsub=client.onUpdate(api.distill.listCohorts,{decisionId:H.decisionDocId},renderCohorts);
-    await client.action(api.distill.run,{decisionId:H.decisionDocId});
+    await client.action(api.distill.run,{decisionId:H.decisionDocId,sinceTs:H.harnessTs});
   }catch(e){console.error(e)}
   $('distillBtn').disabled=false;$('distillBtn').textContent='② Distill cohorts from corpus';
 };
@@ -906,9 +916,9 @@ Object.assign(window,{S,H,client,api,showView,openHarness});
 
 /* L2+L3 populate wiring */
 $('populateBtn').onclick=async()=>{
-  $('populateBtn').disabled=true;$('populateBtn').textContent='③ Building network…';
+  $('populateBtn').disabled=true;$('populateBtn').textContent=`③ Building ${S.count} personas…`;
   try{
-    H.runId=await client.mutation(api.populate.run,{decisionId:H.decisionDocId,n:1800});
+    H.runId=await client.mutation(api.populate.run,{decisionId:H.decisionDocId,n:S.count});
     $('enterRoomBtn').disabled=false;
     $('populateBtn').textContent='③ Network built ✓';
   }catch(e){console.error(e);$('populateBtn').disabled=false;$('populateBtn').textContent='③ Build network — 1,800 personas'}

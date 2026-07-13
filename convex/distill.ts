@@ -24,8 +24,17 @@ export const listCohorts = query({
 });
 
 export const getPosts = internalQuery({
-  args: {},
-  handler: async (ctx) => await ctx.db.query("posts").order("desc").take(400),
+  args: { sinceTs: v.optional(v.number()) },
+  handler: async (ctx, { sinceTs }) => {
+    // scope to this session's fetches so a multi-topic corpus can't blend
+    // unrelated posts into the cohorts; fall back to the full corpus
+    if (sinceTs) {
+      const fresh = (await ctx.db.query("posts").order("desc").take(600))
+        .filter((p) => p._creationTime >= sinceTs);
+      if (fresh.length >= 10) return fresh.slice(0, 400);
+    }
+    return await ctx.db.query("posts").order("desc").take(400);
+  },
 });
 
 export const writeCohorts = internalMutation({
@@ -56,10 +65,10 @@ function sentiment(text: string): number {
 }
 
 export const run = action({
-  args: { decisionId: v.id("decisions") },
-  handler: async (ctx, { decisionId }) => {
+  args: { decisionId: v.id("decisions"), sinceTs: v.optional(v.number()) },
+  handler: async (ctx, { decisionId, sinceTs }) => {
     await ctx.runMutation(internal.pipeline.log, { layer: "L1", status: "running", progress: 0.1, detail: "reading corpus…" });
-    const posts: any[] = await ctx.runQuery(internal.distill.getPosts, {});
+    const posts: any[] = await ctx.runQuery(internal.distill.getPosts, { sinceTs });
     if (posts.length < 10) {
       await ctx.runMutation(internal.pipeline.log, { layer: "L1", status: "failed", progress: 0, detail: "corpus too small — fetch sources first" });
       return { cohortCount: 0 };
