@@ -2,9 +2,9 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "agora-prototype",
-      "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "8642", "-d", "/Users/ayush18/hackbriven"],
+      "name": "agora-web",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["vite", "--port", "8642", "--strictPort"],
       "port": 8642
     }
   ]

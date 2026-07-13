@@ -1,0 +1,77 @@
+/* eslint-disable */
+/**
+ * Generated `api` utility.
+ *
+ * THIS CODE IS AUTOMATICALLY GENERATED.
+ *
+ * To regenerate, run `npx convex dev`.
+ * @module
+ */
+
+import type * as council from "../council.js";
+import type * as distill from "../distill.js";
+import type * as engine from "../engine.js";
+import type * as ingest from "../ingest.js";
+import type * as llm from "../llm.js";
+import type * as ops from "../ops.js";
+import type * as pipeline from "../pipeline.js";
+import type * as populate from "../populate.js";
+import type * as selftest from "../selftest.js";
+import type * as serve from "../serve.js";
+import type * as settings from "../settings.js";
+import type * as sim from "../sim.js";
+import type * as voices from "../voices.js";
+
+import type {
+  ApiFromModules,
+  FilterApi,
+  FunctionReference,
+} from "convex/server";
+
+declare const fullApi: ApiFromModules<{
+  council: typeof council;
+  distill: typeof distill;
+  engine: typeof engine;
+  ingest: typeof ingest;
+  llm: typeof llm;
+  ops: typeof ops;
+  pipeline: typeof pipeline;
+  populate: typeof populate;
+  selftest: typeof selftest;
+  serve: typeof serve;
+  settings: typeof settings;
+  sim: typeof sim;
+  voices: typeof voices;
+}>;
+
+/**
+ * A utility for referencing Convex functions in your app's public API.
+ *
+ * Usage:
+ * ```js
+ * const myFunctionReference = api.myModule.myFunction;
+ * ```
+ */
+export declare const api: FilterApi<
+  typeof fullApi,
+  FunctionReference<any, "public">
+>;
+
+/**
+ * A utility for referencing Convex functions in your app's internal API.
+ *
+ * Usage:
+ * ```js
+ * const myFunctionReference = internal.myModule.myFunction;
+ * ```
+ */
+export declare const internal: FilterApi<
+  typeof fullApi,
+  FunctionReference<any, "internal">
+>;
+
+export declare const components: {
+  workflow: import("@convex-dev/workflow/_generated/component.js").ComponentApi<"workflow">;
+  voicesPool: import("@convex-dev/workpool/_generated/component.js").ComponentApi<"voicesPool">;
+  rateLimiter: import("@convex-dev/rate-limiter/_generated/component.js").ComponentApi<"rateLimiter">;
+};
