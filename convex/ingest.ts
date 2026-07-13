@@ -212,3 +212,26 @@ export const postCount = query({
     return all.length;
   },
 });
+
+// Bulk endpoint for the Go scraper sidecar (scraper/): one source row per
+// (platform, query) scrape, posts arrive pre-normalized and deduped.
+export const insertScraped = mutation({
+  args: {
+    platform: v.string(),
+    query: v.string(),
+    posts: v.array(v.object({
+      author: v.string(), text: v.string(), score: v.number(),
+      url: v.optional(v.string()), ts: v.number(),
+    })),
+  },
+  handler: async (ctx, { platform, query, posts }) => {
+    const sourceId = await ctx.db.insert("sources", { platform, query: query + " (go)", status: "running", count: 0 });
+    const rows = posts.slice(0, 500).map((p) => ({ platform, ...p }));
+    await insertPostRows(ctx, sourceId, rows);
+    await ctx.runMutation(internal.pipeline.log, {
+      layer: "L0", status: "done", progress: 1,
+      detail: `${platform} (go scraper): ${rows.length} posts for "${query}"`,
+    });
+    return { inserted: rows.length };
+  },
+});

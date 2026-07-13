@@ -22,6 +22,17 @@ Optional (real LLM voices — Gemini): `npx convex env set GEMINI_API_KEY <key>`
 Without a key every Gemini call falls back to deterministic content sourced from the
 real corpus — nothing blocks.
 
+**Deep corpus pull (Go sidecar):** `cd scraper && go run . -q "your query" -pages 4`
+— scrapes HN/Bluesky/Mastodon/Lemmy concurrently with pagination, dedupes, and
+bulk-inserts through Convex's HTTP API (~550 posts in ~5 s); the harness console
+fills live while it runs. The simulation workflow itself stays inside Convex on
+purpose: durability comes from Convex owning workflow state — an external runner
+is exactly the process that dies.
+
+**Model-accuracy harness:** `npx convex run selftest:run` — proves engine
+invariants on demand (same-seed determinism, stance bounds, tally conservation,
+roundStats integrity, drift sanity) and cleans up after itself.
+
 ## The harness — 7 layers, all observable live
 
 | Layer | What | Convex surface |

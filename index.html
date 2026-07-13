@@ -370,6 +370,9 @@
         <div style="padding:6px 14px 14px">
           <textarea id="xImport" spellcheck="false" placeholder="𝕏 is API-locked (free tier ≈ unusable) — paste X posts here instead, one per line, optionally '@author, text…'"></textarea>
           <button class="btn" id="xImportBtn">Import X posts</button>
+          <span style="font-size:11px;color:var(--ink-3);margin-left:10px">deep pull:
+          <code style="background:var(--surface-3);padding:2px 6px;border-radius:5px">go run ./scraper -q "your query" -pages 4</code>
+          — concurrent multi-page scrape (Go), lands here live</span>
         </div>
       </div>
       <div class="card feed-card" style="flex:1;min-height:200px">

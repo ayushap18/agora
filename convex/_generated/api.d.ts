@@ -14,6 +14,7 @@ import type * as gemini from "../gemini.js";
 import type * as ingest from "../ingest.js";
 import type * as pipeline from "../pipeline.js";
 import type * as populate from "../populate.js";
+import type * as selftest from "../selftest.js";
 import type * as serve from "../serve.js";
 import type * as sim from "../sim.js";
 import type * as voices from "../voices.js";
@@ -31,6 +32,7 @@ declare const fullApi: ApiFromModules<{
   ingest: typeof ingest;
   pipeline: typeof pipeline;
   populate: typeof populate;
+  selftest: typeof selftest;
   serve: typeof serve;
   sim: typeof sim;
   voices: typeof voices;
