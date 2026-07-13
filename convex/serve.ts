@@ -148,3 +148,36 @@ export const graph = query({
     return acs.map((c) => ({ flatAdj: c.flatAdj, offsets: c.offsets }));
   },
 });
+
+// flip estimates: silent children of this run, compared against the __control__ child
+export const estimates = query({
+  args: { runId: v.id("runs") },
+  handler: async (ctx, { runId }) => {
+    const run = await ctx.db.get(runId);
+    if (!run) return null;
+    const kids = (await ctx.db.query("runs")
+      .withIndex("by_decision", (q) => q.eq("decisionId", run.decisionId)).collect())
+      .filter((r) => r.silent && r.parentRunId === runId);
+    if (!kids.length) return null;
+    // newest estimate batch only
+    const latestTs = Math.max(...kids.map((k) => k._creationTime));
+    const batch = kids.filter((k) => latestTs - k._creationTime < 60000);
+    const rows = [];
+    let controlOpp: number | null = null;
+    for (const k of batch) {
+      const values = await stancesAt(ctx, k._id, k.round);
+      const t = tallyOf(values);
+      if (k.label === "__control__") { controlOpp = t.opp; continue; }
+      rows.push({ label: k.label, opp: t.opp, done: k.status === "complete" });
+    }
+    const allDone = batch.every((k) => k.status === "complete");
+    return {
+      allDone,
+      rows: rows.map((r) => ({
+        label: r.label,
+        flips: controlOpp === null ? 0 : Math.max(0, controlOpp - r.opp),
+        done: r.done,
+      })).sort((a, b) => b.flips - a.flips),
+    };
+  },
+});

@@ -58,13 +58,7 @@ export const start = mutation({
 });
 
 // Fork: fx computed over REAL distilled cohorts by amendment shape
-export const fork = mutation({
-  args: {
-    runId: v.id("runs"),
-    label: v.string(),
-    mode: v.string(), // "grandfather" | "soften" | "compensate" | "custom"
-  },
-  handler: async (ctx, { runId, label, mode }) => {
+async function doFork(ctx: any, runId: any, label: string, mode: string, silent: boolean) {
     const run = (await ctx.db.get(runId))!;
     const cohorts = await ctx.db.query("cohorts")
       .withIndex("by_decision", (q: any) => q.eq("decisionId", run.decisionId)).collect();
@@ -80,23 +74,45 @@ export const fork = mutation({
       const hurtC = cohorts.find((c) => c.hurt) ?? cohorts[0];
       if (hurtC) fx[hurtC.name] = 0.75;
       if (cohorts[1] && cohorts[1] !== hurtC) fx[cohorts[1].name] = 0.2;
-    } else {
+    } else if (mode === "custom") {
       for (const c of cohorts) if (c.baseStance < 0) fx[c.name] = 0.35;
-    }
+    } // mode "control": fx stays empty
+    const config = silent
+      ? { ...run.config, rounds: Math.min(run.round + 4, run.config.rounds + 4) }
+      : run.config;
     const forkRunId = await ctx.db.insert("runs", {
       decisionId: run.decisionId, parentRunId: runId, forkedAtRound: run.round,
-      label, status: "ready", round: 0, config: run.config,
-      amendment: { label, fx }, silent: run.silent,
+      label, status: "ready", round: 0, config,
+      amendment: { label, fx }, silent,
     });
     await ctx.runMutation(internal.engine.copyChunksForFork, { parentRunId: runId, forkRunId });
     await ctx.db.patch(forkRunId, { status: "running" });
     await workflow.start(ctx, internal.sim.simulation, { runId: forkRunId });
-    if (!run.silent) {
+    if (!silent) {
       await ctx.db.insert("events", {
         runId, round: run.round, kind: "fork",
         payload: { label, forkRunId, fx },
       });
     }
     return forkRunId;
+}
+
+export const fork = mutation({
+  args: { runId: v.id("runs"), label: v.string(), mode: v.string() },
+  handler: async (ctx, { runId, label, mode }) =>
+    await doFork(ctx, runId, label, mode, false),
+});
+
+// Counterfactual flip estimates: 4 silent runs (control + 3 amendment shapes),
+// each 4 fast rounds from current stances. flips = control.opp - amended.opp.
+export const estimate = mutation({
+  args: {
+    runId: v.id("runs"),
+    amendments: v.array(v.object({ label: v.string(), mode: v.string() })),
+  },
+  handler: async (ctx, { runId, amendments }) => {
+    await doFork(ctx, runId, "__control__", "control", true);
+    for (const a of amendments.slice(0, 3))
+      await doFork(ctx, runId, a.label, a.mode, true);
   },
 });

@@ -1203,3 +1203,56 @@ Object.assign(window,{W,enterWarRoom});
 /* neutralize legacy local-engine paths (deleted for good in cleanup task) */
 setRunning=(on)=>{if(on&&W.A.run&&W.A.run.status==='ready')client.mutation(api.sim.start,{runId:H.runId})};
 $('verdictBtn').onclick=()=>cToast('Verdict — landing in the next build step.');
+
+/* verdict on convex — approval, risk, ranked counterfactual flips */
+let estimatesUnsub=null;
+$('verdictBtn').onclick=async()=>{
+  const run=W.A.run;if(!run)return;
+  const t=W.A.tally();if(!t.n)return;
+  const d=DECISIONS[S.decisionIdx];
+  // kick off silent estimate runs (idempotent enough for demo: newest batch wins)
+  client.mutation(api.sim.estimate,{runId:H.runId,amendments:[
+    {label:d.amendments[0].label,mode:'grandfather'},
+    {label:d.amendments[1].label,mode:'soften'},
+    {label:d.amendments[2].label,mode:'compensate'}]}).catch(console.error);
+  const st=await client.query(api.serve.liveState,{runId:H.runId});
+  // biggest risk: most-negative-mean cohort, prefer one with hurt text
+  const sums={},counts={};
+  st.stances.forEach((s,i)=>{const c=st.cohortIdx[i];sums[c]=(sums[c]||0)+s;counts[c]=(counts[c]||0)+1});
+  const rows=st.cohorts.map(c=>({...c,mean:(sums[c.idx]||0)/(counts[c.idx]||1)})).sort((a,b)=>a.mean-b.mean);
+  const risk=rows.find(r=>r.hurt)||rows[0];
+  const pctv=x=>Math.round(x/t.n*100);
+  let forkHtml='';
+  if(W.B&&W.B.run){const ta=W.B.tally();
+    if(ta.n)forkHtml=`<div class="vh"><div class="k">Amended fork</div>
+      <div class="v" style="color:var(--sup)">${Math.round(ta.sup/ta.n*100)}%</div>
+      <div class="d">approval · “${S.forkLabel}” · Δ ${Math.round(ta.sup/ta.n*100)-pctv(t.sup)>=0?'+':''}${Math.round(ta.sup/ta.n*100)-pctv(t.sup)} pts</div></div>`}
+  $('verdictBody').innerHTML=`
+    <h2>Verdict · round ${run.round}</h2>
+    <div class="sub">${d.title} — population of ${run.n} grown from real social posts</div>
+    <div class="verdict-hero">
+      <div class="vh"><div class="k">Predicted approval</div>
+        <div class="v" style="color:var(--sup)">${pctv(t.sup)}%</div>
+        <div class="d">${t.sup} of ${t.n} personas support</div></div>
+      <div class="vh"><div class="k">Opposition</div>
+        <div class="v" style="color:var(--opp)">${pctv(t.opp)}%</div>
+        <div class="d">${W.A.factions.filter(f=>f.side==='opp').length||'no'} organized opposing faction(s)</div></div>
+      ${forkHtml}
+    </div>
+    <div class="risk"><span class="tag">BIGGEST RISK</span><br>
+      <b>${risk.name}</b> — mean stance ${risk.mean.toFixed(2)}.
+      ${risk.hurt||'The most opposed cohort in the population.'}</div>
+    <div style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin-bottom:8px">
+      Amendments · counterfactual flips (4 silent futures simulating…)</div>
+    <div id="estimateRows"><div class="ev sys">running counterfactual timelines…</div></div>
+    <div class="foot"><button class="btn primary" data-close>Close</button></div>`;
+  $('verdictModal').classList.add('open');
+  if(estimatesUnsub)estimatesUnsub();
+  estimatesUnsub=client.onUpdate(api.serve.estimates,{runId:H.runId},est=>{
+    const box=document.getElementById('estimateRows');if(!box||!est)return;
+    box.innerHTML=est.rows.map((r,i)=>`<div class="amend" style="cursor:default">
+      <div><b>${i+1}. ${r.label}</b></div>
+      <span class="fx"><b>${r.done?`≈${r.flips} flipped`:'…'}</b>${r.done?'projected':'simulating'}</span></div>`).join('')
+      +(est.allDone?'':'<div style="font-size:11px;color:var(--ink-3);padding:4px 2px">silent scheduler runs — same durable engine, no voices</div>');
+  });
+};
