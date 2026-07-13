@@ -144,21 +144,6 @@ export const estimate = mutation({
   },
 });
 
-// Monte Carlo: K silent replays of the full run under different noise seeds —
-// the spread of final approval is the model's dynamics-uncertainty band.
-export const monteCarlo = mutation({
-  args: { runId: v.id("runs"), samples: v.optional(v.number()) },
-  handler: async (ctx, { runId, samples = 5 }) => {
-    const run = (await ctx.db.get(runId))!;
-    const old = (await ctx.db.query("runs")
-      .withIndex("by_decision", (q: any) => q.eq("decisionId", run.decisionId)).collect())
-      .filter((r) => r.silent && r.parentRunId === runId && r.label.startsWith("__mc_"));
-    for (const k of old) await cascadeDelete(ctx, k._id);
-    for (let k = 0; k < Math.min(samples, 8); k++)
-      await doFork(ctx, runId, `__mc_${k}__`, "control", true, { seedOffset: (k + 1) * 104729, fullRounds: true });
-  },
-});
-
 export async function cascadeDelete(ctx: any, runId: any) {
   // ALL seven child tables — a run must never leave orphans behind
   for (const table of ["personaChunks", "adjChunks", "roundStats", "voices", "factions", "events"] as const) {

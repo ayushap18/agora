@@ -19,99 +19,28 @@ const LAST=['Okafor','Lindqvist','Reyes','Tanaka','Novak','Mehta','Boateng','Kow
 /* cohort: share, base stance, volatility, influence multiplier, arg tags, quotes, faction names */
 const DECISIONS=[
 { id:'rto', title:'Mandate 4 office days per week, effective next quarter',
-  sub:'company-wide return-to-office policy · 1,900 employees',
+  sub:'company-wide return-to-office policy · 1,900 employees', nCohorts:7,
   text:'Effective next quarter, all employees must work from the office 4 days per week. Remote-work exceptions are discontinued. Badge data will be reviewed monthly by people-ops.',
-  beats:{2:{txt:'A widely-shared thread compares commute costs to a 6% pay cut.',shift:{'Parents & caregivers':-.1,'Tenured ICs':-.08}},
-         5:{txt:'Leadership publishes office-utilization numbers defending the mandate.',shift:{'Managers':.08,'Ops & facilities':.08}},
-         8:{txt:'Two senior engineers publicly announce they are interviewing elsewhere.',shift:{'Remote-hired engineers':-.1,'New grads':-.06}}},
-  cohorts:[
-   {name:'Remote-hired engineers',share:.21,base:-.72,vol:.9,inf:1.5,slot:5,hurt:'They joined under explicit remote contracts; the mandate rewrites their deal and their attrition risk is the highest in the population.',
-    tags:['hired remote','attrition risk'],facOpp:'The Remote Guard',facSup:'Returners',
-    q:{o:['I signed a remote contract. This rewrites it retroactively.','My whole team is in three time zones — the office adds nothing but commute.','If badge data becomes a performance signal, I\'m out.'],n:['I\'d consider anchor days if the team actually overlapped.','Waiting to see if exceptions survive review.'],s:['Honestly the whiteboard time has been good for the juniors.']}},
-   {name:'Parents & caregivers',share:.17,base:-.58,vol:.8,inf:.7,slot:7,hurt:'School pickup at 3pm is physically incompatible with 4 badge days; they will comply on paper and quietly disengage — or leave without saying why.',
-    tags:['childcare','commute burden'],facOpp:'Caregiver Coalition',facSup:'Flexible Returners',
-    q:{o:['Four days means I miss every school pickup. That\'s not a preference, it\'s arithmetic.','Daycare near the office has an 11-month waitlist.','I\'ll comply and quietly start looking.'],n:['Two anchor days I could actually plan around.'],s:['The office childcare pilot changed my math completely.']}},
-   {name:'New grads',share:.13,base:.18,vol:1.1,inf:.6,slot:2,hurt:null,
-    tags:['mentorship','social fabric'],facOpp:'Reluctant Commuters',facSup:'Office Natives',
-    q:{o:['My rent near the office eats the whole "culture" argument.'],n:['I like the office but four days feels arbitrary.','Depends who else actually shows up.'],s:['I learn 3× faster sitting next to my senior.','The office is where I actually met people this year.']}},
-   {name:'Managers',share:.12,base:.44,vol:.6,inf:1.3,slot:1,hurt:null,
-    tags:['coordination','visibility'],facOpp:'Skeptical Leads',facSup:'Culture Rebuilders',
-    q:{o:['I manage output, not chairs. This makes my job harder, not easier.'],n:['I\'ll enforce whatever we pick — just pick one and stop relitigating it.'],s:['Cross-team friction dropped every time we were co-located.','Onboarding quality is visibly better in person.']}},
-   {name:'Sales & GTM',share:.12,base:.3,vol:.7,inf:.9,slot:3,hurt:null,
-    tags:['client energy','pipeline'],facOpp:'Road Warriors',facSup:'Floor Energy',
-    q:{o:['I\'m at client sites 3 days a week — badge policy punishes my best weeks.'],n:['Fine either way, my quota doesn\'t care where I sit.'],s:['Deal reviews in a room close faster. It\'s real.']}},
-   {name:'Ops & facilities',share:.08,base:.52,vol:.5,inf:.8,slot:4,hurt:null,
-    tags:['utilization','budget'],facOpp:'Quiet Doubters',facSup:'Building Advocates',
-    q:{o:['We cut two floors last year. Where exactly do 1,900 people sit?'],n:['Give me headcount-by-day and I can make it work.'],s:['An empty building is the most expensive thing we own.']}},
-   {name:'Tenured ICs',share:.17,base:-.34,vol:.7,inf:1.2,slot:8,hurt:null,
-    tags:['proven output','trust'],facOpp:'The Proven Remote',facSup:'Returning Veterans',
-    q:{o:['Five years of top ratings from my home office. What signal did I miss?','This reads as distrust dressed up as culture.'],n:['I\'ll trade anchor days for the end of badge reports.'],s:['I miss the hallway problems. Some of my best work started there.']}}],
   amendments:[
-   {label:'Grandfather remote-hired employees',detail:'anyone hired under a remote contract keeps it',
-    fx:{'Remote-hired engineers':.95,'Tenured ICs':.25,'Parents & caregivers':.1}},
-   {label:'Reduce to 2 anchor days',detail:'team-chosen anchor days, no badge reviews',
-    fx:{'Remote-hired engineers':.45,'Parents & caregivers':.5,'Tenured ICs':.45,'Managers':-.1}},
-   {label:'Commuter stipend + on-site childcare',detail:'$350/mo transit + childcare pilot at HQ',
-    fx:{'Parents & caregivers':.75,'New grads':.2,'Sales & GTM':.1}}]},
+   {label:'Grandfather remote-hired employees',detail:'anyone hired under a remote contract keeps it'},
+   {label:'Reduce to 2 anchor days',detail:'team-chosen anchor days, no badge reviews'},
+   {label:'Commuter stipend + on-site childcare',detail:'$350/mo transit + childcare pilot at HQ'}]},
 { id:'fare', title:'Raise metro fares 40% and retire monthly passes',
-  sub:'city transit authority · 310k daily riders',
+  sub:'city transit authority · 310k daily riders', nCohorts:7,
   text:'To close the operating deficit, single fares rise 40% next quarter and the discounted monthly pass program is retired. Revenue is earmarked for signal modernization.',
-  beats:{2:{txt:'Local news profiles a nurse paying 9% of take-home pay on fares.',shift:{'Night-shift workers':-.1,'Daily commuters':-.08}},
-         5:{txt:'Transit authority publishes the deficit numbers — insolvency in 30 months without action.',shift:{'Motorists':.06,'Transit staff':.08}},
-         8:{txt:'A rider union announces a fare strike for the first Monday of the quarter.',shift:{'Students':-.1,'Daily commuters':-.06}}},
-  cohorts:[
-   {name:'Daily commuters',share:.24,base:-.66,vol:.8,inf:1.1,slot:5,hurt:null,tags:['cost of living','no alternative'],facOpp:'Fare Strike Bloc',facSup:'Reluctant Payers',
-    q:{o:['A 40% jump with no pass? That\'s my grocery margin.','I have no car. "Choice" isn\'t in my vocabulary.'],n:['If it genuinely fixes the signals, maybe.'],s:['I\'d pay more for a train that actually comes.']}},
-   {name:'Students',share:.15,base:-.78,vol:1,inf:.6,slot:2,hurt:null,tags:['fixed income','pass dependent'],facOpp:'Student Front',facSup:'—',
-    q:{o:['The monthly pass is the only reason I can afford campus.','This prices out exactly the people with zero alternatives.'],n:['A student cap would change everything.'],s:['Fine if student pricing survives.']}},
-   {name:'Night-shift workers',share:.09,base:-.84,vol:.7,inf:.4,slot:6,hurt:'They ride at hours with no bus alternative and are absent from every survey the authority ran — the fare hike lands hardest on the least consulted group in the city.',
-    tags:['no alternative','unheard'],facOpp:'The 3AM Riders',facSup:'—',
-    q:{o:['At 3am there is no other way home. None.','Nobody surveyed the night shift. Nobody ever does.','This is a tax on hospital cleaners and line cooks.'],n:['A night-fare freeze would be something.'],s:[]}},
-   {name:'Occasional riders',share:.18,base:-.18,vol:.9,inf:.8,slot:7,hurt:null,tags:['convenience','parking'],facOpp:'Annoyed Occasionals',facSup:'Fair-Share Riders',
-    q:{o:['I\'ll just drive. Congratulations.'],n:['I ride twice a month — barely notice either way.'],s:['Per-ride pricing is honestly fairer to people like me.']}},
-   {name:'Motorists',share:.14,base:.32,vol:.6,inf:.9,slot:3,hurt:null,tags:['road funding','fairness'],facOpp:'—',facSup:'User-Pays Caucus',
-    q:{o:['Push riders into cars and my commute doubles too.'],n:['Not my train, not my fight.'],s:['Riders covering their own system? Long overdue.']}},
-   {name:'Transit staff',share:.1,base:.48,vol:.5,inf:.8,slot:4,hurt:null,tags:['solvency','jobs'],facOpp:'Worried Operators',facSup:'Keep-It-Running',
-    q:{o:['Fare strikes get taken out on us at the platform.'],n:['Just fund it. I don\'t care how.'],s:['Without this, the system dies and my job with it.']}},
-   {name:'Downtown businesses',share:.1,base:-.12,vol:.7,inf:1,slot:1,hurt:null,tags:['foot traffic','workforce'],facOpp:'Foot-Traffic Alliance',facSup:'Modernizers',
-    q:{o:['Fewer riders is fewer customers at lunch. Simple.'],n:['Depends whether service actually improves.'],s:['Reliable signals mean reliable staff arrival times.']}}],
   amendments:[
-   {label:'Keep monthly passes at +15%',detail:'pass survives, priced up moderately',
-    fx:{'Daily commuters':.6,'Students':.55,'Night-shift workers':.3}},
-   {label:'Night & off-peak fare freeze',detail:'no increase 9pm–6am and weekends',
-    fx:{'Night-shift workers':.9,'Daily commuters':.15,'Students':.2}},
-   {label:'Income-based fare cap',detail:'monthly spend capped at 3% of documented income',
-    fx:{'Students':.65,'Night-shift workers':.6,'Daily commuters':.35,'Motorists':-.1}}]},
+   {label:'Keep monthly passes at +15%',detail:'pass survives, priced up moderately'},
+   {label:'Night & off-peak fare freeze',detail:'no increase 9pm–6am and weekends'},
+   {label:'Income-based fare cap',detail:'monthly spend capped at 3% of documented income'}]},
 { id:'ai', title:'Require AI-assistance disclosure on all student coursework',
-  sub:'university senate policy · 28k students, 1,600 faculty',
+  sub:'university senate policy · 28k students, 1,600 faculty', nCohorts:7,
   text:'All submitted coursework must declare every AI tool used and attach full prompt logs. Undeclared AI use is treated as academic dishonesty with a one-strike suspension policy.',
-  beats:{2:{txt:'A viral post shows prompt logs exposing a student\'s disability accommodations.',shift:{'Students w/ accommodations':-.12,'Humanities students':-.06}},
-         5:{txt:'Two departments publish evidence of grading collapse without disclosure norms.',shift:{'Faculty':.1,'TAs & graders':.08}},
-         8:{txt:'Student senate proposes a privacy-preserving disclosure format.',shift:{'CS students':.08,'Students w/ accommodations':.06}}},
-  cohorts:[
-   {name:'CS students',share:.18,base:-.42,vol:1,inf:1.2,slot:1,hurt:null,tags:['tooling is the job','false positives'],facOpp:'Build-With-AI Bloc',facSup:'Honest Toolers',
-    q:{o:['Industry requires these tools. The policy trains us for 2015.','Detection false-positives end careers under one-strike.'],n:['Disclosure fine, prompt logs absurd.'],s:['Declaring tools is what professionals do anyway.']}},
-   {name:'Humanities students',share:.16,base:-.2,vol:.9,inf:.8,slot:7,hurt:null,tags:['surveillance','trust'],facOpp:'Pen & Privacy',facSup:'Original Voices',
-    q:{o:['Submitting my thinking process for inspection is surveillance.'],n:['I don\'t use it much; I just hate the logging.'],s:['My degree shouldn\'t compete with a chatbot\'s prose.']}},
-   {name:'Students w/ accommodations',share:.08,base:-.66,vol:.7,inf:.5,slot:6,hurt:'Prompt logs expose assistive-technology use that accommodations law explicitly keeps private; one-strike enforcement threatens exactly the students with least institutional power.',
-    tags:['privacy','assistive tech'],facOpp:'Accommodation Rights',facSup:'—',
-    q:{o:['My screen-reader workflow is in those logs. That\'s my medical privacy.','One strike, and appeals take a semester I don\'t have.'],n:['A redacted log format could work.'],s:[]}},
-   {name:'Faculty',share:.22,base:.5,vol:.6,inf:1.4,slot:4,hurt:null,tags:['assessment integrity','grading'],facOpp:'Pragmatist Professors',facSup:'Integrity Caucus',
-    q:{o:['Unenforceable rules teach contempt for all rules.'],n:['I just want to know what I\'m grading.'],s:['I cannot assess what I cannot see. Disclosure is the minimum.','Blind grading collapsed the moment generation got free.']}},
-   {name:'TAs & graders',share:.12,base:.28,vol:.8,inf:.7,slot:3,hurt:null,tags:['grading load','ambiguity'],facOpp:'Overloaded Graders',facSup:'Clear-Rules Camp',
-    q:{o:['I now adjudicate honesty cases at $19/hour?'],n:['Give me a rubric and I\'ll grade anything.'],s:['Right now every essay is a guessing game. Rules help.']}},
-   {name:'Admissions & admin',share:.09,base:.38,vol:.5,inf:.9,slot:2,hurt:null,tags:['reputation','liability'],facOpp:'—',facSup:'Reputation Guard',
-    q:{o:['One-strike suspensions are lawsuit generators.'],n:['Peer institutions are watching what we pick.'],s:['Employers are already asking what our degree certifies.']}},
-   {name:'Parents & alumni',share:.15,base:.22,vol:.7,inf:.8,slot:8,hurt:null,tags:['degree value','fairness'],facOpp:'Due-Process Parents',facSup:'Standards Bearers',
-    q:{o:['Suspension on an algorithm\'s accusation? Not with my kid.'],n:['I just want the degree to mean something.'],s:['We\'re paying for rigor. Protect it.']}}],
   amendments:[
-   {label:'Drop prompt logs, keep tool declaration',detail:'declare tools used; logs never collected',
-    fx:{'Students w/ accommodations':.7,'Humanities students':.5,'CS students':.35}},
-   {label:'Replace one-strike with graduated response',detail:'warning → resubmission → hearing',
-    fx:{'Students w/ accommodations':.5,'CS students':.4,'Parents & alumni':.3}},
-   {label:'Course-level opt-in instead of blanket rule',detail:'instructors choose per course',
-    fx:{'CS students':.5,'Faculty':-.15,'Humanities students':.3}}]}
+   {label:'Drop prompt logs, keep tool declaration',detail:'declare tools used; logs never collected'},
+   {label:'Replace one-strike with graduated response',detail:'warning → resubmission → hearing'},
+   {label:'Course-level opt-in instead of blanket rule',detail:'instructors choose per course'}]}
 ];
+
 
 
 /* ─── simulation (LEGACY in-browser engine: unreachable, kept only as the renderer
@@ -129,7 +58,7 @@ const ICONS={rto:'🏢',fare:'🚇',ai:'🎓'};
 DECISIONS.forEach((d,i)=>{
   const b=el('button','sample',
     `<span class="pick">✓</span><div class="ic">${ICONS[d.id]||'◈'}</div><b>${d.title}</b>
-     <div class="meta">${d.sub}<br>${d.cohorts.length} cohorts · ${d.amendments.length} draft amendments</div>`);
+     <div class="meta">${d.sub}<br>${d.nCohorts} cohorts · ${d.amendments.length} draft amendments</div>`);
   b.onclick=()=>{S.decisionIdx=i;$('decisionText').value=d.text;$('decisionTitle').value=d.title;
     [...samplesBox.children].forEach((c,j)=>c.classList.toggle('sel',j===i));};
   samplesBox.append(b);
@@ -411,8 +340,6 @@ function makeAdapter(label){
     d:{cohorts:[]},
     stances(){return this._stances||[]},
     tick(){return false},                    // guards legacy space-bar handler
-    quote(){return ''},                       // guards legacy popover handler
-    meanByCohort(){return []},
     tally(vals){const s=vals||this.stances();let sup=0,opp=0;
       for(const v of s){if(v>.12)sup++;else if(v<-.12)opp++}
       return{sup,opp,neu:s.length-sup-opp,n:s.length}},

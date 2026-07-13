@@ -24,7 +24,16 @@ require "uri"
 require "time"
 
 CACHE_DIR  = File.expand_path("../.corpus-cache", __dir__)
-DEPLOYMENT = ENV.fetch("CONVEX_URL", "http://127.0.0.1:3210")
+def env_deployment
+  ["#{__dir__}/../.env.local", ".env.local"].each do |p|
+    next unless File.exist?(p)
+    File.foreach(p) do |line|
+      return Regexp.last_match(1).strip if line =~ /^VITE_CONVEX_URL=(.+)$/
+    end
+  end
+  "http://127.0.0.1:3210"
+end
+DEPLOYMENT = ENV.fetch("CONVEX_URL") { env_deployment }
 BATCH_MAX  = 400 # stay under the Convex mutation's 500-post cap
 
 def cache_path(query)

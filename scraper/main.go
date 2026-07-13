@@ -42,7 +42,7 @@ type Post struct {
 }
 
 var (
-	deployment = flag.String("deployment", "http://127.0.0.1:3210", "Convex deployment URL")
+	deployment = flag.String("deployment", envDeployment(), "Convex deployment URL (default: VITE_CONVEX_URL from ../.env.local)")
 	query      = flag.String("q", "", "search query (required)")
 	pages      = flag.Int("pages", 3, "pages per source")
 	dump       = flag.String("dump", "", "also write deduped results as JSON to this file")
@@ -362,6 +362,21 @@ func insertBatch(platform string, posts []Post) (int, error) {
 		inserted += int(res.Value.Inserted)
 	}
 	return inserted, nil
+}
+
+// envDeployment reads VITE_CONVEX_URL from ../.env.local so the scraper
+// targets whatever backend the app uses (cloud dev since the migration).
+func envDeployment() string {
+	for _, p := range []string{"../.env.local", ".env.local"} {
+		if b, err := os.ReadFile(p); err == nil {
+			for _, line := range strings.Split(string(b), "\n") {
+				if v, ok := strings.CutPrefix(strings.TrimSpace(line), "VITE_CONVEX_URL="); ok && v != "" {
+					return strings.TrimSpace(v)
+				}
+			}
+		}
+	}
+	return "http://127.0.0.1:3210"
 }
 
 func writeFile(path string, b []byte) error {
