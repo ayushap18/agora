@@ -1,10 +1,17 @@
 import { internalMutation } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { v } from "convex/values";
-import { mulberry32 } from "./populate";
+import { mulberry32, CHUNK } from "./populate";
 
 // Prototype-tuned constants (see spec Global Constraints)
 const SOCIAL = 0.30, HARDEN = 0.045, AMEND_DIV = 4;
+// Single source of tally truth — serve.ts and the UI use the same threshold.
+export const STANCE_EPS = 0.12;
+export function tallyOf(values: number[]) {
+  let sup = 0, opp = 0;
+  for (const s of values) { if (s > STANCE_EPS) sup++; else if (s < -STANCE_EPS) opp++; }
+  return { sup, opp, neu: values.length - sup - opp, n: values.length };
+}
 
 async function loadRun(ctx: any, runId: any) {
   const run = await ctx.db.get(runId);
@@ -44,7 +51,7 @@ export const tickRound = internalMutation({
 
     const next = new Array<number>(n);
     for (let i = 0; i < n; i++) {
-      const chunk = acs[(i / 500) | 0], local = i % 500;
+      const chunk = acs[(i / CHUNK) | 0], local = i % CHUNK;
       const lo = chunk.offsets[local], hi = chunk.offsets[local + 1];
       let acc = 0, wsum = 0;
       for (let e = lo; e < hi; e++) {
@@ -62,13 +69,14 @@ export const tickRound = internalMutation({
       next[i] = Math.max(-1, Math.min(1, prev[i] + social + harden + shift + noise));
     }
 
-    // write stance chunks + factions + run round
+    // write stance chunks + per-round stats + factions + run round
     for (let c = 0; c < pcs.length; c++) {
-      const lo = c * 500, hi = Math.min(n, lo + 500);
+      const lo = c * CHUNK, hi = Math.min(n, lo + CHUNK);
       await ctx.db.insert("stanceChunks", {
         runId, round, chunkIdx: c, values: next.slice(lo, hi).map((s) => +s.toFixed(4)),
       });
     }
+    await ctx.db.insert("roundStats", { runId, round, ...tallyOf(next) });
     if (round >= 3 && !run.silent) {
       const buckets: Record<string, { side: string; ci: number; n: number }> = {};
       for (let i = 0; i < n; i++) {

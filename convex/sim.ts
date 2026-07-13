@@ -111,6 +111,22 @@ export const estimate = mutation({
     amendments: v.array(v.object({ label: v.string(), mode: v.string() })),
   },
   handler: async (ctx, { runId, amendments }) => {
+    // exactly one batch of silent children may exist: delete the previous one
+    const run = (await ctx.db.get(runId))!;
+    const old = (await ctx.db.query("runs")
+      .withIndex("by_decision", (q: any) => q.eq("decisionId", run.decisionId)).collect())
+      .filter((r) => r.silent && r.parentRunId === runId);
+    for (const k of old) {
+      for (const table of ["personaChunks", "adjChunks"] as const) {
+        const rows = await ctx.db.query(table).withIndex("by_run", (q: any) => q.eq("runId", k._id)).collect();
+        for (const r of rows) await ctx.db.delete(r._id);
+      }
+      const scs = await ctx.db.query("stanceChunks").withIndex("by_run_round", (q: any) => q.eq("runId", k._id)).collect();
+      for (const r of scs) await ctx.db.delete(r._id);
+      const stats = await ctx.db.query("roundStats").withIndex("by_run", (q: any) => q.eq("runId", k._id)).collect();
+      for (const r of stats) await ctx.db.delete(r._id);
+      await ctx.db.delete(k._id);
+    }
     await doFork(ctx, runId, "__control__", "control", true);
     for (const a of amendments.slice(0, 3))
       await doFork(ctx, runId, a.label, a.mode, true);

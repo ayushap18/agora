@@ -80,6 +80,14 @@ export default defineSchema({
     flatAdj: v.array(v.number()),
     offsets: v.array(v.number()),
   }).index("by_run", ["runId", "chunkIdx"]),
+  roundStats: defineTable({
+    runId: v.id("runs"),
+    round: v.number(),
+    sup: v.number(),
+    opp: v.number(),
+    neu: v.number(),
+    n: v.number(),
+  }).index("by_run", ["runId", "round"]),
   stanceChunks: defineTable({
     runId: v.id("runs"),
     round: v.number(),

@@ -99,6 +99,9 @@ export const run = mutation({
         runId, round: 0, chunkIdx: c, values: stance.slice(lo, hi).map((s) => +s.toFixed(4)),
       });
     }
+    let sup = 0, opp = 0;
+    for (const s of stance) { if (s > 0.12) sup++; else if (s < -0.12) opp++; }
+    await ctx.db.insert("roundStats", { runId, round: 0, sup, opp, neu: n - sup - opp, n });
     await ctx.runMutation(internal.pipeline.log, {
       layer: "L2", status: "done", progress: 1, detail: `${n} personas in ${chunks} chunks`, runId,
     });

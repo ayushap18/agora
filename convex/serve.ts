@@ -1,11 +1,7 @@
 import { query } from "./_generated/server";
 import { v } from "convex/values";
-
-function tallyOf(values: number[]) {
-  let sup = 0, opp = 0;
-  for (const s of values) { if (s > 0.12) sup++; else if (s < -0.12) opp++; }
-  return { sup, opp, neu: values.length - sup - opp, n: values.length };
-}
+import { tallyOf } from "./engine";
+import { CHUNK } from "./populate";
 
 async function stancesAt(ctx: any, runId: any, round: number): Promise<number[]> {
   const scs = await ctx.db.query("stanceChunks")
@@ -31,15 +27,33 @@ export const debugCounts = query({
   },
 });
 
-// One subscription drives map + tally: current-round stances + persona meta.
+// One-time per run per client: everything static (~60KB). The hot liveState
+// subscription stays slim.
+export const personaMeta = query({
+  args: { runId: v.id("runs") },
+  handler: async (ctx, { runId }) => {
+    const run = await ctx.db.get(runId);
+    if (!run) return null;
+    const pcs = await ctx.db.query("personaChunks").withIndex("by_run", (q) => q.eq("runId", runId)).collect();
+    pcs.sort((a, b) => a.chunkIdx - b.chunkIdx);
+    const acs = await ctx.db.query("adjChunks").withIndex("by_run", (q) => q.eq("runId", runId)).collect();
+    acs.sort((a, b) => a.chunkIdx - b.chunkIdx);
+    return {
+      names: pcs.flatMap((c) => c.names),
+      cohortIdx: pcs.flatMap((c) => c.cohortIdx),
+      inf: pcs.flatMap((c) => c.inf),
+      adj: acs.map((c) => ({ flatAdj: c.flatAdj, offsets: c.offsets })),
+    };
+  },
+});
+
+// Hot subscription: per-round dynamics only.
 export const liveState = query({
   args: { runId: v.id("runs") },
   handler: async (ctx, { runId }) => {
     const run = await ctx.db.get(runId);
     if (!run) return null;
     const values = await stancesAt(ctx, runId, run.round);
-    const pcs = await ctx.db.query("personaChunks").withIndex("by_run", (q) => q.eq("runId", runId)).collect();
-    pcs.sort((a, b) => a.chunkIdx - b.chunkIdx);
     const cohorts = await ctx.db.query("cohorts")
       .withIndex("by_decision", (q) => q.eq("decisionId", run.decisionId)).collect();
     cohorts.sort((a, b) => a.idx - b.idx);
@@ -47,26 +61,31 @@ export const liveState = query({
       .withIndex("by_run", (q) => q.eq("runId", runId).eq("round", run.round)).collect();
     return {
       run: {
-        _id: run._id, label: run.label, status: run.status, round: run.round,
-        rounds: run.config.rounds, n: run.config.n, seed: run.config.seed,
+        _id: run._id, decisionId: run.decisionId, label: run.label, status: run.status,
+        round: run.round, rounds: run.config.rounds, n: run.config.n, seed: run.config.seed,
         parentRunId: run.parentRunId ?? null, forkedAtRound: run.forkedAtRound ?? null,
         amendment: run.amendment ?? null,
       },
       stances: values,
       tally: tallyOf(values),
-      cohortIdx: pcs.flatMap((c) => c.cohortIdx),
-      inf: pcs.flatMap((c) => c.inf),
       cohorts: cohorts.map((c) => ({ idx: c.idx, name: c.name, hurt: c.hurt ?? null, tags: c.tags })),
       factions: factionRows[0]?.list ?? [],
     };
   },
 });
 
+// O(rounds) indexed read; falls back to computing for runs that predate roundStats.
 export const timeline = query({
   args: { runId: v.id("runs") },
   handler: async (ctx, { runId }) => {
     const run = await ctx.db.get(runId);
     if (!run) return [];
+    const stats = await ctx.db.query("roundStats")
+      .withIndex("by_run", (q) => q.eq("runId", runId)).collect();
+    if (stats.length) {
+      return stats.sort((a, b) => a.round - b.round)
+        .map((s) => ({ round: s.round, sup: s.sup, opp: s.opp, neu: s.neu, n: s.n }));
+    }
     const out = [];
     for (let r = 0; r <= run.round; r++) {
       const values = await stancesAt(ctx, runId, r);
@@ -114,17 +133,17 @@ export const persona = query({
   handler: async (ctx, { runId, idx }) => {
     const run = await ctx.db.get(runId);
     if (!run) return null;
+    const chunkIdx = (idx / CHUNK) | 0, local = idx % CHUNK;
     const chunk = await ctx.db.query("personaChunks")
-      .withIndex("by_run", (q) => q.eq("runId", runId).eq("chunkIdx", (idx / 500) | 0)).first();
+      .withIndex("by_run", (q) => q.eq("runId", runId).eq("chunkIdx", chunkIdx)).first();
     if (!chunk) return null;
-    const local = idx % 500;
     const cohorts = await ctx.db.query("cohorts")
       .withIndex("by_decision", (q) => q.eq("decisionId", run.decisionId)).collect();
     cohorts.sort((a, b) => a.idx - b.idx);
     const hist: number[] = [];
     for (let r = 0; r <= run.round; r++) {
       const sc = await ctx.db.query("stanceChunks")
-        .withIndex("by_run_round", (q) => q.eq("runId", runId).eq("round", r).eq("chunkIdx", (idx / 500) | 0)).first();
+        .withIndex("by_run_round", (q) => q.eq("runId", runId).eq("round", r).eq("chunkIdx", chunkIdx)).first();
       if (sc) hist.push(sc.values[local]);
     }
     const seedRefId = chunk.seedRef[local];
@@ -134,22 +153,15 @@ export const persona = query({
       cohort: cohorts[chunk.cohortIdx[local]]?.name ?? "—",
       inf: chunk.inf[local],
       hist,
-      seedPost: seedPost ? { text: seedPost.text.slice(0, 200), platform: seedPost.platform, url: seedPost.url ?? null, author: seedPost.author } : null,
+      seedPost: seedPost
+        ? { text: seedPost.text.slice(0, 200), platform: seedPost.platform, url: seedPost.url ?? null, author: seedPost.author }
+        : null,
     };
   },
 });
 
-// one-time per run: packed adjacency for client edge rendering
-export const graph = query({
-  args: { runId: v.id("runs") },
-  handler: async (ctx, { runId }) => {
-    const acs = await ctx.db.query("adjChunks").withIndex("by_run", (q) => q.eq("runId", runId)).collect();
-    acs.sort((a, b) => a.chunkIdx - b.chunkIdx);
-    return acs.map((c) => ({ flatAdj: c.flatAdj, offsets: c.offsets }));
-  },
-});
-
-// flip estimates: silent children of this run, compared against the __control__ child
+// flip estimates: the silent children are always exactly one batch
+// (sim.estimate deletes the previous batch before spawning).
 export const estimates = query({
   args: { runId: v.id("runs") },
   handler: async (ctx, { runId }) => {
@@ -159,20 +171,17 @@ export const estimates = query({
       .withIndex("by_decision", (q) => q.eq("decisionId", run.decisionId)).collect())
       .filter((r) => r.silent && r.parentRunId === runId);
     if (!kids.length) return null;
-    // newest estimate batch only
-    const latestTs = Math.max(...kids.map((k) => k._creationTime));
-    const batch = kids.filter((k) => latestTs - k._creationTime < 60000);
     const rows = [];
     let controlOpp: number | null = null;
-    for (const k of batch) {
-      const values = await stancesAt(ctx, k._id, k.round);
-      const t = tallyOf(values);
-      if (k.label === "__control__") { controlOpp = t.opp; continue; }
-      rows.push({ label: k.label, opp: t.opp, done: k.status === "complete" });
+    for (const k of kids) {
+      const stats = await ctx.db.query("roundStats")
+        .withIndex("by_run", (q) => q.eq("runId", k._id).eq("round", k.round)).first();
+      const opp = stats ? stats.opp : tallyOf(await stancesAt(ctx, k._id, k.round)).opp;
+      if (k.label === "__control__") { controlOpp = opp; continue; }
+      rows.push({ label: k.label, opp, done: k.status === "complete" });
     }
-    const allDone = batch.every((k) => k.status === "complete");
     return {
-      allDone,
+      allDone: kids.every((k) => k.status === "complete"),
       rows: rows.map((r) => ({
         label: r.label,
         flips: controlOpp === null ? 0 : Math.max(0, controlOpp - r.opp),

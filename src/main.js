@@ -115,7 +115,8 @@ const DECISIONS=[
 const MAX_ROUNDS=12;
 const STORE_KEY='agora-run-v1';
 
-/* ─── simulation ─── */
+/* ─── simulation (LEGACY in-browser engine: unreachable, kept only as the renderer
+   shape reference — delete after the hackathon) ─── */
 class Sim{
   constructor(decision,seed,count,label){
     this.d=decision; this.seed=seed; this.count=count; this.label=label||'baseline';
@@ -371,20 +372,10 @@ function persist(){
     altHist:S.alt?S.alt.history.map(h=>[...h].map(v=>+v.toFixed(3))):null,
     events:S.events.slice(-40)}));}catch(e){}
 }
-(function checkResume(){
-  let saved=null;
-  try{saved=JSON.parse(localStorage.getItem(STORE_KEY))}catch(e){}
-  if(saved&&saved.round>0&&saved.round<MAX_ROUNDS){
-    $('resumeBanner').style.display='flex';
-    $('resumeBtn').onclick=()=>{S.decisionIdx=saved.decisionIdx;S.count=saved.count;
-      startRun(saved.seed,saved)};
-    $('discardBtn').onclick=()=>{localStorage.removeItem(STORE_KEY);
-      $('resumeBanner').style.display='none'};
-  }
-})();
+// (legacy localStorage resume removed — Convex workflows are the durability layer now)
 
 /* ─── cross-tab live mirror (the "second browser window" moment) ─── */
-const bc='BroadcastChannel'in window?new BroadcastChannel('agora'):null;
+const bc=null; // legacy BroadcastChannel mirror removed — reactive queries sync every client
 function broadcast(){
   if(!bc||S.mirror)return;
   bc.postMessage({decisionIdx:S.decisionIdx,seed:S.seed,count:S.count,
@@ -392,33 +383,6 @@ function broadcast(){
     alt:S.alt?[...S.alt.stances()]:null,forkLabel:S.forkLabel,
     events:S.events.slice(-30).map(e=>({kind:e.kind,html:e.html,p:e.p,round:e.round,fname:e.fname}))});
 }
-if(bc)bc.onmessage=m=>{
-  if(S.running)return; // this tab is the leader
-  const d=m.data;
-  S.mirror=true;
-  if(!S.sim||S.seed!==d.seed){
-    S.decisionIdx=d.decisionIdx;S.count=d.count;
-    startRun(d.seed,null);
-    $('feed').innerHTML='';
-  }
-  S.seed=d.seed;
-  S.sim.round=d.round;
-  S.sim.personas.forEach((p,i)=>p.stance=d.st[i]);
-  S.sim.history[d.round]=Float32Array.from(d.st);
-  if(d.round>=3)S.sim.computeFactions();
-  if(d.alt){
-    if(!S.alt){S.alt=new Sim(S.sim.d,d.seed,d.count,'amended');S.forkLabel=d.forkLabel;enterForkUI()}
-    S.alt.round=d.round;
-    S.alt.personas.forEach((p,i)=>p.stance=d.alt[i]);
-    S.alt.history[d.round]=Float32Array.from(d.alt);
-    if(d.round>=3)S.alt.computeFactions();
-  }
-  S.events=d.events;
-  $('mirrorBanner').style.display='flex';
-  ['runBtn','interveneBtn','resetBtn'].forEach(id=>$(id).disabled=true);
-  $('statusTxt').textContent='MIRROR';$('statusDot').className='dot live';
-  renderAll();
-};
 
 /* ─── intervention / fork ─── */
 $('interveneBtn').onclick=()=>{
@@ -960,16 +924,22 @@ function makeAdapter(label){
     tally(vals){const s=vals||this.stances();let sup=0,opp=0;
       for(const v of s){if(v>.12)sup++;else if(v<-.12)opp++}
       return{sup,opp,neu:s.length-sup-opp,n:s.length}},
+    setMeta(meta){                            // one-time static payload (names/cohorts/inf/graph)
+      this.meta=meta;
+      const adj=[];meta.adj.forEach(ch=>{
+        for(let i=0;i+1<ch.offsets.length;i++)adj.push(ch.flatAdj.slice(ch.offsets[i],ch.offsets[i+1]))});
+      this.adj=adj;this.count=meta.names.length;
+      const nc=Math.max(1,Math.max(...meta.cohortIdx)+1);
+      this.personas=meta.cohortIdx.map((ci,i)=>({ci,inf:meta.inf[i],stance:0}));
+      this.pos=meta.cohortIdx.map((ci,i)=>({
+        y:(ci+.5)/nc+((hash01(i)-.5)*.72)/nc,x:0,jit:hash01(i*7+3)*Math.PI*2}));
+    },
     applyLive(st){
+      if(this.round!==st.run.round)this.edgesDirty=true;
       this._stances=st.stances;this.round=st.run.round;this.run=st.run;
       this.factions=st.factions;this.d.cohorts=st.cohorts.map(c=>({name:c.name}));
-      if(this.count!==st.stances.length){
-        this.count=st.stances.length;
-        const nc=Math.max(1,st.cohorts.length);
-        this.personas=st.cohortIdx.map((ci,i)=>({ci,inf:st.inf[i],stance:st.stances[i]}));
-        this.pos=st.cohortIdx.map((ci,i)=>({
-          y:(ci+.5)/nc+((hash01(i)-.5)*.72)/nc,x:0,jit:hash01(i*7+3)*Math.PI*2}));
-      }else this.personas.forEach((p,i)=>{p.stance=st.stances[i]});
+      if(this.personas.length===st.stances.length)
+        this.personas.forEach((p,i)=>{p.stance=st.stances[i]});
     },
   };
 }
@@ -982,24 +952,27 @@ async function enterWarRoom(runId){
   unsubAll();
   W.A=makeAdapter('baseline');W.B=null;W.timelineB=[];W.roundCache={};
   H.runId=runId;
-  S.sim=W.A;S.alt=null;S.scrubbed=false;   // point legacy renderers at adapters
+  S.sim=null;S.alt=null;S.scrubbed=false;  // legacy rAF loop stays dormant — cRaf owns the canvas
   exitForkUI();
   showView('room');
   $('speedBtn').style.display='none';       // pacing is server-owned now
   sizeCanvases();
-  // graph edges: one-time fetch, reshape into per-persona arrays
-  client.query(api.serve.graph,{runId}).then(chunks=>{
-    const adj=[];chunks.forEach(ch=>{
-      for(let i=0;i+1<ch.offsets.length;i++)adj.push(ch.flatAdj.slice(ch.offsets[i],ch.offsets[i+1]));});
-    W.A.adj=adj;if(W.B)W.B.adj=adj;
+  // static payload: names/cohorts/influence/graph — fetched once, hot sub stays slim
+  client.query(api.serve.personaMeta,{runId}).then(meta=>{
+    if(!meta)return;W.A.setMeta(meta);if(W.B&&!W.B.meta)W.B.setMeta(meta);
   });
-  W.subs.push(client.onUpdate(api.serve.liveState,{runId},st=>{if(st){W.A.applyLive(st);cRenderFrame();maybeAttachFork(st)}}));
+  location.hash='run='+runId;      // shareable: any browser/device with this URL mirrors live
+  let forkWatch=false;
+  W.subs.push(client.onUpdate(api.serve.liveState,{runId},st=>{if(!st)return;
+    W.A.applyLive(st);cRenderFrame();
+    if(!forkWatch){forkWatch=true;H.decisionDocId=st.run.decisionId;
+      W.subs.push(client.onUpdate(api.serve.runsForDecision,{decisionId:st.run.decisionId},runs=>{
+        const fork=runs.find(r=>r.parentRunId===H.runId&&!r.label.startsWith('__'));
+        if(fork&&!W.B)attachFork(fork._id,fork.amendment?fork.amendment.label:fork.label);
+      }));}
+  }));
   W.subs.push(client.onUpdate(api.serve.timeline,{runId},t=>{W.timelineA=t;cRenderCharts()}));
   W.subs.push(client.onUpdate(api.serve.feed,{runId},f=>{W.feed=f;cRenderFeed()}));
-  W.subs.push(client.onUpdate(api.serve.runsForDecision,{decisionId:H.decisionDocId},runs=>{
-    const fork=runs.find(r=>r.parentRunId===H.runId);
-    if(fork&&!W.B)attachFork(fork._id,fork.amendment?fork.amendment.label:fork.label);
-  }));
   const d=DECISIONS[S.decisionIdx];
   $('rtitle').textContent=d.title;$('rsub').textContent='grounded in real social posts · convex durable workflow';
 }
@@ -1008,10 +981,11 @@ function maybeAttachFork(){/* handled by runsForDecision sub */}
 function attachFork(forkId,label){
   if(W.B)return;
   H.forkId=forkId;
-  W.B=makeAdapter('amended');W.B.adj=W.A.adj;
-  S.alt=W.B;S.forkLabel=label;
+  W.B=makeAdapter('amended');if(W.A.meta)W.B.setMeta(W.A.meta);
+  S.forkLabel=label;
   enterForkUI();
   $('mapBLabel').textContent=label;
+  if(!W.B.meta)client.query(api.serve.personaMeta,{runId:forkId}).then(m=>{if(m&&!W.B.meta)W.B.setMeta(m)});
   W.subs.push(client.onUpdate(api.serve.liveState,{runId:forkId},st=>{if(st)W.B.applyLive(st)}));
   W.subs.push(client.onUpdate(api.serve.timeline,{runId:forkId},t=>{W.timelineB=t;cRenderCharts()}));
 }
@@ -1157,6 +1131,7 @@ $('liveBtn').onclick=()=>{W.scrubbing=false;$('liveBtn').style.display='none';
 /* persona popover → server drill-down with real-post provenance */
 async function cNodeHit(e,cv,adapter,runId){
   if(!adapter||!adapter.count)return;
+  if(mapView(cv).dragged)return;   // a pan, not a click
   const r=cv.getBoundingClientRect(),dpr=devicePixelRatio;
   const mx=(e.clientX-r.left)*dpr,my=(e.clientY-r.top)*dpr;
   let best=-1,bd=1e9;
@@ -1192,8 +1167,8 @@ cvB.addEventListener('click',e=>{if(W.B&&W.B.run)cNodeHit(e,cvB,W.B,H.forkId)});
 /* convex-era frame loop: reuse drawMap with adapters + scrub cache */
 (function cRaf(){
   if($('room').classList.contains('active')&&W.A.run){
-    drawMap(cvA,W.A,W.scrubbing?W.scrubStances:null);
-    if(W.B&&W.B.run)drawMap(cvB,W.B,null);
+    cDrawMap(cvA,W.A,W.scrubbing?W.scrubStances:null);
+    if(W.B&&W.B.run)cDrawMap(cvB,W.B,null);
     if(!W.scrubbing)cRenderTally();
   }
   requestAnimationFrame(cRaf);
@@ -1256,3 +1231,10 @@ $('verdictBtn').onclick=async()=>{
       +(est.allDone?'':'<div style="font-size:11px;color:var(--ink-3);padding:4px 2px">silent scheduler runs — same durable engine, no voices</div>');
   });
 };
+
+
+/* hash routing: #run=<id> mirrors a live run from any browser — convex reactivity IS the sync */
+(function(){
+  const m=location.hash.match(/run=([a-z0-9]+)/);
+  if(m)enterWarRoom(m[1]);
+})();
