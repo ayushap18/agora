@@ -1,5 +1,5 @@
 import { client, api } from './convexClient.js';
-import { crank, lightsOut, goLights, shudder } from './ignition.js';
+import { crank, lightsOut, goLights, shudder, engineFilm } from './ignition.js';
 
 'use strict';
 /* ═══════════════════════════ deterministic core ═══════════════════════════
@@ -1386,6 +1386,7 @@ const NAV=[['Home','setup',()=>{unsubAll();history.replaceState(null,'',location
   $('heroStart').onclick=()=>{
     shudder(document.querySelector('.hero-cinema h1'));
     ticks.forEach((x,i)=>setTimeout(()=>x.classList.add('lit'),i*7));
-    setTimeout(()=>{crank(()=>showView('pitwall'));ticks.forEach(x=>x.classList.remove('lit'))},380)};
+    setTimeout(()=>ticks.forEach(x=>x.classList.remove('lit')),600);
+    engineFilm(()=>showView('pitwall'));};
   $('heroRuns').onclick=()=>showView('pitwall');
 })();
