@@ -232,6 +232,63 @@ func scrapeMastodon(q string, pages int, out chan<- []Post) {
 	}
 }
 
+// scrapeReddit pulls REAL reddit via PullPush (submissions + comments), paced
+// to dodge its rate limiter, filtered to query-relevant rows.
+func scrapeReddit(q string, pages int, out chan<- []Post) {
+	kw := []string{}
+	for _, w := range strings.Fields(strings.ToLower(q)) {
+		if len(w) > 3 {
+			kw = append(kw, w)
+		}
+	}
+	relevant := func(text string) bool {
+		if len(kw) == 0 {
+			return true
+		}
+		lt := strings.ToLower(text)
+		for _, w := range kw {
+			if strings.Contains(lt, w) {
+				return true
+			}
+		}
+		return false
+	}
+	for _, kind := range []string{"submission", "comment"} {
+		var res struct {
+			Data []struct {
+				Author    string  `json:"author"`
+				Title     string  `json:"title"`
+				Selftext  string  `json:"selftext"`
+				Body      string  `json:"body"`
+				Score     float64 `json:"score"`
+				Permalink string  `json:"permalink"`
+				Created   float64 `json:"created_utc"`
+			} `json:"data"`
+		}
+		u := fmt.Sprintf("https://api.pullpush.io/reddit/search/%s/?q=%s&size=100&sort=desc",
+			kind, url.QueryEscape(q))
+		if err := getJSON(u, &res); err != nil || len(res.Data) == 0 {
+			time.Sleep(1500 * time.Millisecond) // rate-limited — pause before the next kind
+			continue
+		}
+		var batch []Post
+		for _, d := range res.Data {
+			text := clip(strings.TrimSpace(d.Title+" "+d.Selftext+d.Body), 800)
+			if len(strings.Fields(text)) < 5 || text == "[deleted]" || text == "[removed]" || !relevant(text) {
+				continue
+			}
+			batch = append(batch, Post{
+				Author: d.Author, Text: text, Score: d.Score,
+				URL: "https://reddit.com" + d.Permalink, TS: d.Created * 1000,
+			})
+		}
+		if len(batch) > 0 {
+			out <- batch
+		}
+		time.Sleep(1200 * time.Millisecond)
+	}
+}
+
 func scrapeLemmy(q string, pages int, out chan<- []Post) {
 	for p := 1; p <= pages; p++ {
 		var res struct {
@@ -319,7 +376,7 @@ func main() {
 	}
 	start := time.Now()
 	sources := map[string]func(string, int, chan<- []Post){
-		"hn": scrapeHN, "bluesky": scrapeBluesky, "mastodon": scrapeMastodon, "lemmy": scrapeLemmy,
+		"reddit": scrapeReddit, "hn": scrapeHN, "bluesky": scrapeBluesky, "mastodon": scrapeMastodon,
 	}
 	var wg sync.WaitGroup
 	results := make(map[string][]Post)

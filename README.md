@@ -115,3 +115,14 @@ scraper/    Go corpus sidecar          cache/  Ruby corpus cache          docs/ 
 ```
 
 <div align="center"><sub>Nav · <b>Home → Pit wall → Harness → War room → Settings</b> · every screen mirrors the same lap 🔴</sub></div>
+
+- **X/Twitter has no free search in 2026** — Nitter instances are dead (X killed
+  the guest API they relied on), the API is paywalled, and OAuth is blocked. Every
+  public scraper repo (nitter, twscrape) is either broken or needs real X accounts.
+  So X is **import-only** (paste/CSV), and **Bluesky** — the open real-time Twitter
+  clone — is the live alternative and works well.
+- **Reddit** unauthenticated JSON is 403 from most networks, so the chain is
+  reddit.json → **PullPush** (free Pushshift successor: real submissions + comments,
+  retry-backed against its rate limiter, query-relevance filtered) → **Lemmy** (open
+  federated reddit-style forum, the reliable fallback). Posts are labeled by true
+  origin (reddit vs lemmy).
