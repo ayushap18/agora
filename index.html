@@ -62,27 +62,58 @@
 
   /* ── setup view ───────────────────────────────────────────────────────── */
   #setup{flex-direction:column;align-items:center;overflow-y:auto;padding:0 24px 60px}
+  #bgnet{position:fixed;inset:0;z-index:-1}
+  @keyframes fadeup{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
   .setup-nav{width:100%;max-width:1060px;display:flex;align-items:center;justify-content:space-between;padding:22px 0}
-  .setup-hero{max-width:760px;text-align:center;margin:5vh 0 34px}
-  .setup-hero h1{font-size:clamp(28px,4.5vw,44px);font-weight:800;letter-spacing:-.02em;line-height:1.12}
-  .setup-hero h1 em{font-style:normal;background:linear-gradient(90deg,var(--sup),#8ab8f0);
-    -webkit-background-clip:text;background-clip:text;color:transparent}
-  .setup-hero p{margin-top:14px;color:var(--ink-2);font-size:16px;line-height:1.55}
-  .setup-grid{width:100%;max-width:1060px;display:grid;grid-template-columns:1.5fr 1fr;gap:16px}
+  .hero-badge{display:inline-flex;align-items:center;gap:8px;padding:6px 15px;border-radius:99px;
+    border:1px solid rgba(57,135,229,.35);background:rgba(57,135,229,.08);color:#8ab8f0;
+    font-size:10.5px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;
+    margin-bottom:22px;animation:fadeup .7s ease both}
+  .setup-hero{max-width:840px;text-align:center;margin:4vh 0 26px}
+  .setup-hero h1{font-size:clamp(32px,4.6vw,50px);font-weight:800;letter-spacing:-.03em;line-height:1.08;
+    text-wrap:balance;animation:fadeup .7s .07s ease both}
+  .setup-hero h1 em{font-style:normal;background:linear-gradient(100deg,#3987e5 5%,#8ab8f0 35%,#9085e9 60%,#e66767 95%);
+    background-size:220% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;
+    animation:shimmer 5.5s ease-in-out infinite}
+  @keyframes shimmer{0%,100%{background-position:0% 0}50%{background-position:100% 0}}
+  .setup-hero p{margin:16px auto 0;color:var(--ink-2);font-size:16.5px;line-height:1.6;max-width:680px;
+    animation:fadeup .7s .14s ease both}
+  .hero-stats{display:flex;justify-content:center;gap:0;margin-top:30px;animation:fadeup .7s .22s ease both}
+  .hero-stats div{padding:0 30px;text-align:center}
+  .hero-stats div+div{border-left:1px solid var(--ring)}
+  .hero-stats b{display:block;font-size:24px;font-weight:800;letter-spacing:-.01em}
+  .hero-stats span{font-size:10.5px;color:var(--ink-3);letter-spacing:.14em;text-transform:uppercase;font-weight:600}
+  .samples-row{width:100%;max-width:1060px;display:grid;grid-template-columns:repeat(3,1fr);gap:14px;
+    margin:10px 0 16px;animation:fadeup .7s .3s ease both}
+  @media(max-width:900px){.samples-row{grid-template-columns:1fr}}
+  .sample{position:relative;text-align:left;padding:16px 16px 14px;border-radius:14px;
+    border:1px solid var(--ring);cursor:pointer;
+    background:linear-gradient(180deg,rgba(33,33,32,.92),rgba(26,26,25,.92));
+    transition:transform .18s,border-color .18s,box-shadow .18s}
+  .sample:hover{transform:translateY(-3px);border-color:rgba(57,135,229,.55)}
+  .sample .ic{width:38px;height:38px;border-radius:10px;display:grid;place-items:center;font-size:19px;
+    background:var(--surface-3);border:1px solid var(--ring);margin-bottom:11px}
+  .sample b{display:block;font-size:13.5px;line-height:1.4;color:var(--ink);margin-bottom:6px;padding-right:22px}
+  .sample .meta{font-size:11px;color:var(--ink-3);line-height:1.5}
+  .sample .pick{position:absolute;top:13px;right:13px;width:19px;height:19px;border-radius:50%;
+    border:1.5px solid var(--baseline);display:grid;place-items:center;font-size:10px;color:#fff;
+    transition:all .18s}
+  .sample.sel{border-color:var(--sup);
+    box-shadow:0 0 0 1px var(--sup),0 14px 40px rgba(57,135,229,.16);
+    background:linear-gradient(180deg,rgba(57,135,229,.14),rgba(26,26,25,.95))}
+  .sample.sel .pick{background:var(--sup);border-color:var(--sup)}
+  .setup-grid{width:100%;max-width:1060px;display:grid;grid-template-columns:1.5fr 1fr;gap:16px;
+    animation:fadeup .7s .38s ease both}
   @media(max-width:900px){.setup-grid{grid-template-columns:1fr}}
-  .decision-card{padding:18px}
+  .decision-card{padding:18px;background:rgba(26,26,25,.85);backdrop-filter:blur(6px)}
   .decision-card label{display:block;font-size:11px;font-weight:700;letter-spacing:.1em;
     text-transform:uppercase;color:var(--ink-3);margin-bottom:10px}
-  .samples{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
-  .sample{padding:7px 12px;border-radius:8px;border:1px solid var(--ring);font-size:12.5px;
-    color:var(--ink-2);background:var(--surface-2);transition:all .15s;text-align:left}
-  .sample:hover{border-color:var(--sup);color:var(--ink)}
-  .sample.sel{border-color:var(--sup);background:rgba(57,135,229,.12);color:var(--ink)}
-  #decisionText{width:100%;min-height:110px;resize:vertical;background:var(--surface-2);
+  #decisionText{width:100%;min-height:150px;resize:vertical;background:var(--surface-2);
     border:1px solid var(--ring);border-radius:9px;color:var(--ink);font-family:inherit;
-    font-size:14px;line-height:1.5;padding:12px 14px;outline:none}
+    font-size:14px;line-height:1.5;padding:12px 14px;outline:none;transition:border-color .15s}
   #decisionText:focus{border-color:var(--sup)}
-  .ground-card{padding:18px;display:flex;flex-direction:column;gap:14px}
+  .ground-card{padding:18px;display:flex;flex-direction:column;gap:14px;
+    background:rgba(26,26,25,.85);backdrop-filter:blur(6px)}
   .dropzone{border:1.5px dashed var(--baseline);border-radius:10px;padding:18px;text-align:center;
     color:var(--ink-3);font-size:13px;cursor:pointer;transition:all .15s}
   .dropzone:hover,.dropzone.on{border-color:var(--sup);color:var(--ink-2);background:rgba(57,135,229,.05)}
@@ -91,8 +122,18 @@
   .slider-row{display:flex;align-items:center;gap:12px;font-size:13px;color:var(--ink-2)}
   .slider-row output{font-variant-numeric:tabular-nums;font-weight:700;color:var(--ink);min-width:34px;text-align:right}
   input[type=range]{flex:1;accent-color:var(--sup)}
-  .setup-cta{margin-top:22px;display:flex;align-items:center;gap:14px}
-  .setup-cta .btn.primary{padding:13px 26px;font-size:15px;border-radius:11px}
+  .setup-cta{margin-top:26px;display:flex;flex-direction:column;align-items:center;gap:14px;
+    animation:fadeup .7s .46s ease both}
+  .setup-cta .btn.primary{padding:15px 34px;font-size:15.5px;border-radius:12px;
+    animation:glow 2.8s ease-in-out infinite}
+  @keyframes glow{0%,100%{box-shadow:0 0 0 1px rgba(57,135,229,.35),0 8px 34px rgba(57,135,229,.28)}
+    50%{box-shadow:0 0 0 1px rgba(57,135,229,.6),0 10px 48px rgba(57,135,229,.5)}}
+  .setup-cta .hint{font-size:12px;color:var(--ink-3)}
+  .feature-pills{display:flex;gap:9px;flex-wrap:wrap;justify-content:center;margin-top:20px;
+    animation:fadeup .7s .54s ease both}
+  .fpill{display:inline-flex;align-items:center;gap:7px;padding:7px 13px;border-radius:99px;
+    border:1px solid var(--ring);background:rgba(33,33,32,.75);font-size:12px;color:var(--ink-2)}
+  .fpill i{font-style:normal;font-size:12px}
   .resume-banner{display:none;margin-top:18px;padding:12px 16px;border-radius:10px;
     border:1px solid rgba(250,178,25,.4);background:rgba(250,178,25,.07);color:var(--ink-2);
     font-size:13px;align-items:center;gap:12px;max-width:1060px;width:100%}
@@ -214,15 +255,22 @@
 
 <!-- ════════ SETUP ════════ -->
 <div class="view active" id="setup">
+  <canvas id="bgnet"></canvas>
   <div class="setup-nav">
     <div class="logo"><span class="mark">A</span>AGORA <small>· CONSEQUENCE ENGINE</small></div>
     <span class="pill"><span class="dot"></span>research prototype</span>
   </div>
   <div class="setup-hero">
+    <div class="hero-badge">◈ Multi-agent consequence simulation</div>
     <h1>Every decision gets debated after it ships.<br>Watch the debate <em>before</em>.</h1>
     <p>Paste a decision. Agora materializes a synthetic population grounded in real feedback,
     lets them argue across a social graph, and streams the fallout — factions, dissent,
     counterfactual futures — live to every open screen.</p>
+    <div class="hero-stats">
+      <div><b>150+</b><span>synthetic stakeholders</span></div>
+      <div><b>2</b><span>futures per fork</span></div>
+      <div><b>0</b><span>refreshes needed</span></div>
+    </div>
   </div>
   <div class="resume-banner" id="resumeBanner">
     <span>⏻</span><span style="flex:1">An interrupted run was found — the engine is durable.
@@ -230,10 +278,10 @@
     <button class="btn" id="resumeBtn">Resume run</button>
     <button class="btn ghost" id="discardBtn">Discard</button>
   </div>
-  <div class="setup-grid" style="margin-top:18px">
+  <div class="samples-row" id="samples"></div>
+  <div class="setup-grid">
     <div class="card decision-card">
       <label>1 · The decision under consequence review</label>
-      <div class="samples" id="samples"></div>
       <textarea id="decisionText" spellcheck="false"></textarea>
     </div>
     <div class="card ground-card">
@@ -260,7 +308,14 @@
   </div>
   <div class="setup-cta">
     <button class="btn primary" id="materializeBtn">Materialize personas →</button>
-    <span style="font-size:12px;color:var(--ink-3)">every viewer sees the same live state · zero websocket code</span>
+    <span class="hint">every viewer sees the same live state · zero websocket code</span>
+    <div class="feature-pills">
+      <span class="fpill"><i>⑂</i> counterfactual forks</span>
+      <span class="fpill"><i>⬡</i> emergent factions</span>
+      <span class="fpill"><i>⚠</i> dissent agent</span>
+      <span class="fpill"><i>⏻</i> durable resume</span>
+      <span class="fpill"><i>◉</i> live on every screen</span>
+    </div>
   </div>
 </div>
 
@@ -588,8 +643,11 @@ const el=(t,cls,html)=>{const e=document.createElement(t);if(cls)e.className=cls
 
 /* ─── setup view wiring ─── */
 const samplesBox=$('samples');
+const ICONS={rto:'🏢',fare:'🚇',ai:'🎓'};
 DECISIONS.forEach((d,i)=>{
-  const b=el('button','sample',d.title);
+  const b=el('button','sample',
+    `<span class="pick">✓</span><div class="ic">${ICONS[d.id]||'◈'}</div><b>${d.title}</b>
+     <div class="meta">${d.sub}<br>${d.cohorts.length} cohorts · ${d.amendments.length} draft amendments</div>`);
   b.onclick=()=>{S.decisionIdx=i;$('decisionText').value=d.text;
     [...samplesBox.children].forEach((c,j)=>c.classList.toggle('sel',j===i));};
   samplesBox.append(b);
@@ -1127,6 +1185,45 @@ function renderAll(){
   renderFactions();
   renderFeed();
 }
+
+/* ambient landing background — a quiet population slowly polarizing */
+(function bgnet(){
+  const cv=$('bgnet');if(!cv)return;
+  const ctx=cv.getContext('2d');
+  let W,H;
+  const fit=()=>{W=cv.width=innerWidth*devicePixelRatio;H=cv.height=innerHeight*devicePixelRatio};
+  fit();addEventListener('resize',fit);
+  const R=mulberry32(7),N=72,pts=[];
+  for(let i=0;i<N;i++)pts.push({x:R(),y:R(),a:R()*Math.PI*2,
+    sp:.002+R()*.003,side:i%2?1:-1,r:(1.2+R()*1.6)});
+  (function frame(){
+    requestAnimationFrame(frame);
+    if(!$('setup').classList.contains('active'))return;
+    ctx.clearRect(0,0,W,H);
+    const dpr=devicePixelRatio;
+    for(const p of pts){
+      p.a+=p.sp;
+      p.x+=Math.cos(p.a)*.0007+p.side*.00009; // slow drift toward its pole
+      p.y+=Math.sin(p.a*.83)*.0006;
+      if(p.x<-.04)p.x=1.04;if(p.x>1.04)p.x=-.04;
+      if(p.y<-.04)p.y=1.04;if(p.y>1.04)p.y=-.04;
+    }
+    const max=(120*dpr)**2;
+    for(let i=0;i<N;i++)for(let j=i+1;j<N;j++){
+      const dx=(pts[i].x-pts[j].x)*W,dy=(pts[i].y-pts[j].y)*H,d2=dx*dx+dy*dy;
+      if(d2<max){
+        ctx.strokeStyle=`rgba(150,165,200,${.055*(1-d2/max)})`;
+        ctx.lineWidth=dpr*.7;
+        ctx.beginPath();ctx.moveTo(pts[i].x*W,pts[i].y*H);ctx.lineTo(pts[j].x*W,pts[j].y*H);ctx.stroke();
+      }
+    }
+    for(const p of pts){
+      const col=p.side>0?'57,135,229':'230,103,103';
+      ctx.fillStyle=`rgba(${col},.45)`;
+      ctx.beginPath();ctx.arc(p.x*W,p.y*H,p.r*dpr,0,7);ctx.fill();
+    }
+  })();
+})();
 
 /* continuous canvas animation */
 (function raf(){
