@@ -124,12 +124,21 @@ const LAMPS=['CORPUS','COHORTS','GRID','GRAPH','ENGINE','VOICES','LIVE'];
 export function engineFilm(onLand){
   if(reduced){onLand();return}
   let done=false;
-  const finish=()=>{
+  const finish=()=>{                    // skip = fast rosso wipe L→R, land under cover
     if(done)return;done=true;
     clearTimeout(hardStop);
-    onLand();
-    root.style.transition='opacity .25s';root.style.opacity='0';
-    setTimeout(()=>root.remove(),300);
+    const wipe=root.querySelector('.ef-wipe');
+    root.querySelectorAll('.ef-lamps,.ef-ignite,.ef-streaks,.ef-skip,.ef-bloom,.ef-rumble')
+      .forEach(x=>x.style.display='none');
+    wipe.style.transition='transform .34s cubic-bezier(.55,0,.45,1)';
+    wipe.style.transform='translateX(-28vw) skewX(-12deg)';        // covers screen
+    setTimeout(()=>{
+      onLand();
+      root.style.background='transparent';
+      wipe.style.transition='transform .3s cubic-bezier(.55,0,.45,1)';
+      wipe.style.transform='translateX(120vw) skewX(-12deg)';      // exits right
+      setTimeout(()=>root.remove(),340);
+    },360);
   };
   const R='#da291c',DEEP='#a00c01',HAIR='#303030';
   const root=document.createElement('div');
