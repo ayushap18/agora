@@ -9,14 +9,17 @@
  */
 
 import type * as council from "../council.js";
+import type * as crons from "../crons.js";
 import type * as distill from "../distill.js";
 import type * as embed from "../embed.js";
 import type * as engine from "../engine.js";
 import type * as ingest from "../ingest.js";
 import type * as llm from "../llm.js";
+import type * as monitor from "../monitor.js";
 import type * as ops from "../ops.js";
 import type * as pipeline from "../pipeline.js";
 import type * as populate from "../populate.js";
+import type * as presence from "../presence.js";
 import type * as selftest from "../selftest.js";
 import type * as serve from "../serve.js";
 import type * as settings from "../settings.js";
@@ -31,14 +34,17 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   council: typeof council;
+  crons: typeof crons;
   distill: typeof distill;
   embed: typeof embed;
   engine: typeof engine;
   ingest: typeof ingest;
   llm: typeof llm;
+  monitor: typeof monitor;
   ops: typeof ops;
   pipeline: typeof pipeline;
   populate: typeof populate;
+  presence: typeof presence;
   selftest: typeof selftest;
   serve: typeof serve;
   settings: typeof settings;

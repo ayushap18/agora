@@ -968,6 +968,7 @@ function makeAdapter(label){
 const W={A:makeAdapter('baseline'),B:null,subs:[],timelineA:[],timelineB:[],feed:[],scrubbing:false,roundCache:{}};
 
 function unsubAll(){
+  try{stopPresence()}catch(e){}
   W.subs.forEach(u=>{try{u()}catch(e){}});W.subs=[];
   if(typeof estimatesUnsub==='function'){try{estimatesUnsub()}catch(e){}estimatesUnsub=null}
   if(typeof cohortUnsub==='function'){try{cohortUnsub()}catch(e){}cohortUnsub=null}
@@ -977,7 +978,7 @@ function unsubAll(){
 async function enterWarRoom(runId){
   unsubAll();
   W.A=makeAdapter('baseline');W.B=null;W.timelineA=[];W.timelineB=[];W.feed=[];W.roundCache={};
-  W.scrubbing=false;W.scrubStances=null;$('liveBtn').style.display='none';
+  W.scrubbing=false;W.scrubStances=null;W.revAdj=null;$('liveBtn').style.display='none';
   H.runId=runId;H.forkId=null;H.decision=null;
   S.sim=null;S.alt=null;S.scrubbed=false;  // legacy rAF loop stays dormant — cRaf owns the canvas
   exitForkUI();
@@ -1003,6 +1004,7 @@ async function enterWarRoom(runId){
         if(fork&&!W.B)attachFork(fork._id,fork.amendment?fork.amendment.label:fork.label);
       }));}
   }));
+  startPresence(runId);
   W.subs.push(client.onUpdate(api.serve.timeline,{runId},t=>{W.timelineA=t;cRenderCharts()}));
   W.subs.push(client.onUpdate(api.serve.feed,{runId},f=>{W.feed=f;cRenderFeed()}));
   $('rsub').textContent='grounded in real social posts · convex durable workflow';
@@ -1148,8 +1150,10 @@ $('interveneBtn').onclick=()=>{
 };
 $('customForkBtn').onclick=async()=>{
   const t=$('amendCustom').value.trim();if(!t||W.B||W.forkInFlight)return;
-  closeModals();W.forkInFlight=true;
-  try{await client.mutation(api.sim.fork,{runId:H.runId,label:t,mode:'custom'})}
+  closeModals();W.forkInFlight=true;cToast('🧠 model is mapping your amendment onto the cohorts…');
+  try{const r=await client.action(api.sim.customForkPublic,{runId:H.runId,label:t});
+    cToast(r.llm?'⑂ forked — LLM assigned cohort effects':'⑂ forked — heuristic effects (no model key)')}
+  catch(e){console.error(e)}
   finally{W.forkInFlight=false}
 };
 function cToast(msg){$('feed').prepend(el('div','ev sys',msg))}
@@ -1196,6 +1200,12 @@ async function cNodeHit(e,cv,adapter,runId){
       <div style="font-size:10px;color:var(--ink-3)">grown from a real ${esc(info.seedPost.platform)} post by @${esc(info.seedPost.author)}
       ${safeUrl?` · <a href="${esc(safeUrl)}" target="_blank" style="color:var(--sup)">source ↗</a>`:''}</div>`
       :'<div class="quote" style="color:var(--ink-3)">synthetic persona (no seed post)</div>'}
+    ${(()=>{const ad=adapter,nbrs=(ad.adj[best]||[]);
+      if(!W.revAdj){W.revAdj={};ad.adj.forEach((ns,i)=>ns.forEach(j=>{(W.revAdj[j]=W.revAdj[j]||[]).push(i)}))}
+      const infl=nbrs.slice().sort((a,b)=>(ad.meta.inf[b]||0)-(ad.meta.inf[a]||0)).slice(0,3)
+        .map(j=>esc(ad.meta.names[j])).join(', ');
+      const reach=(W.revAdj[best]||[]).length;
+      return `<div style="font-size:11px;color:var(--ink-3);margin-top:6px">influenced by: <span style="color:var(--ink-2)">${infl||'—'}</span> · reaches ${reach} persona${reach===1?'':'s'}</div>`})()}
     <div style="font-size:10px;letter-spacing:.1em;color:var(--ink-3);font-weight:700;margin-top:6px">STANCE · R0 → R${hist.length-1}</div>
     <svg viewBox="0 0 100 34" preserveAspectRatio="none">
       <line x1="0" y1="17" x2="100" y2="17" stroke="var(--baseline)" stroke-width=".5"/>
@@ -1264,7 +1274,8 @@ $('verdictBtn').onclick=async()=>{
     </div>
     <div class="risk"><span class="tag">BIGGEST RISK</span><br>
       <b>${esc(risk.name)}</b> — mean stance ${risk.mean.toFixed(2)}.
-      ${esc(risk.hurt||'The most opposed cohort in the population.')}</div>
+      ${esc(risk.hurt||'The most opposed cohort in the population.')}
+      ${H.decision&&H.decision.skew?`<div style="margin-top:8px;padding-top:8px;border-top:1px dashed rgba(208,59,59,.4)"><span class="tag">CORPUS SKEW</span><br>${esc(H.decision.skew)}</div>`:''}</div>
     <div style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin-bottom:8px">
       Amendments · counterfactual flips (4 silent futures simulating…)</div>
     <div id="estimateRows"><div class="ev sys">running counterfactual timelines…</div></div>
@@ -1272,6 +1283,7 @@ $('verdictBtn').onclick=async()=>{
       Model council · each model predicts the outcome blind</div>
     <div id="councilRows"><div class="ev sys">convening the council…</div></div>
     <div class="foot">
+      <button class="btn" id="exportCardBtn">📤 Export card</button>
       <button class="btn" id="calibrateBtn">🎯 Calibrate vs reality</button>
       <button class="btn primary" data-close>Close</button></div>`;
   $('verdictModal').classList.add('open');
@@ -1285,6 +1297,7 @@ $('verdictBtn').onclick=async()=>{
       label:(H.decision||DECISIONS[S.decisionIdx]).title,actualPct:pct}).catch(console.error);
     document.getElementById('calibrateBtn').textContent='🎯 Calibrated ✓ (see dashboard)';
   };
+  document.getElementById('exportCardBtn').onclick=()=>exportVerdictCard(t,run);
   if(confUnsub)confUnsub();
   confUnsub=client.onUpdate(api.serve.confidence,{runId:H.runId},cf=>{
     const elb=document.getElementById('confBand');if(!elb||!cf)return;
@@ -1453,15 +1466,17 @@ function bindMap(cv,view){
 
 /* factions strip now reads adapters, not the retired local sims */
 renderFactions=function(){
-  const put=(box,ad)=>{
+  const put=(box,ad,runId)=>{
     box.innerHTML='';
     (ad?ad.factions:[]).forEach(f=>{
-      const c=el('div','faction',`<b>${f.name}</b>${f.n} personas · “${f.arg}”`);
+      const c=el('div','faction',`<b>${esc(f.name)}</b>${f.n} personas · “${esc(f.arg)}” · <span style="color:var(--sup)">dive ↗</span>`);
       c.style.borderLeftColor=f.side==='opp'?'var(--opp)':'var(--sup)';
+      c.style.cursor='pointer';
+      if(f.ci!==undefined)c.onclick=()=>cohortDive(runId,f.ci);
       box.append(c);
     });
   };
-  put($('factionsA'),W.A);put($('factionsB'),W.B);
+  put($('factionsA'),W.A,H.runId);put($('factionsB'),W.B,H.forkId);
 };
 
 /* zoom/pan/hover affordance hint on the map cards */
@@ -1634,4 +1649,139 @@ client.onUpdate(api.ops.calibrations,{},rows=>{
        <span class="acc" style="font-weight:800;color:${r.error<=10?'var(--good)':r.error<=20?'var(--warning)':'var(--opp)'}">${grade}</span>
        <span></span>`));
   });
+});
+
+/* ═══ presence: who's watching + live cursors (hand-rolled heartbeat) ═══ */
+const CLIENT_ID=sessionStorage.aid||(sessionStorage.aid=Math.random().toString(36).slice(2,10));
+const WATCH_NAME='watcher-'+CLIENT_ID.slice(0,4);
+let presenceTimer=null,myCursor={x:.5,y:.5},viewersUnsub=null;
+function startPresence(runId){
+  stopPresence();
+  const beat=()=>client.mutation(api.presence.heartbeat,
+    {runId,clientId:CLIENT_ID,name:WATCH_NAME,x:myCursor.x,y:myCursor.y}).catch(()=>{});
+  beat();presenceTimer=setInterval(beat,8000);
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)beat()});
+  viewersUnsub=client.onUpdate(api.presence.viewers,{runId},vs=>{
+    const others=vs.filter(v2=>v2.clientId!==CLIENT_ID);
+    let chip=document.getElementById('watchChip');
+    if(!chip){chip=el('span','pill');chip.id='watchChip';
+      $('statusPill').after(chip)}
+    chip.innerHTML=`👁 ${vs.length} watching`;
+    let layer=document.getElementById('cursorLayer');
+    if(!layer){layer=el('div','');layer.id='cursorLayer';
+      layer.style.cssText='position:absolute;inset:0;pointer-events:none;z-index:5';
+      document.getElementById('mapCardA').append(layer)}
+    layer.innerHTML='';
+    const r=cvA.getBoundingClientRect();
+    others.forEach(v2=>{
+      const d=el('div','',`<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--warning)"></span> <span style="font-size:10px;color:var(--ink-2)">${esc(v2.name)}</span>`);
+      d.style.cssText=`position:absolute;left:${v2.x*100}%;top:${v2.y*100}%;transform:translate(-4px,-4px);transition:left .8s,top .8s`;
+      layer.append(d);
+    });
+  });
+}
+function stopPresence(){
+  if(presenceTimer){clearInterval(presenceTimer);presenceTimer=null}
+  if(viewersUnsub){try{viewersUnsub()}catch(e){}viewersUnsub=null}
+  document.getElementById('watchChip')?.remove();
+  document.getElementById('cursorLayer')?.remove();
+}
+cvA.addEventListener('mousemove',e=>{
+  const r=cvA.getBoundingClientRect();
+  myCursor={x:Math.max(0,Math.min(1,(e.clientX-r.left)/r.width)),
+            y:Math.max(0,Math.min(1,(e.clientY-r.top)/r.height))};
+});
+
+/* ═══ cohort deep-dive modal (reuses verdict modal shell) ═══ */
+async function cohortDive(runId,ci){
+  const d=await client.query(api.serve.cohortDive,{runId,ci}).catch(()=>null);
+  if(!d)return;
+  const arrow=d.meanN>d.mean0+.02?'→ warming':d.meanN<d.mean0-.02?'→ hardening':'→ holding';
+  $('verdictBody').innerHTML=`
+    <h2>${esc(d.name)}</h2>
+    <div class="sub">${d.n} personas · ${Math.round(d.share*100)}% of population · tags: ${d.tags.map(esc).join(', ')}</div>
+    <div class="verdict-hero">
+      <div class="vh"><div class="k">Round 0 stance</div><div class="v" style="color:${stanceColor(d.mean0)}">${d.mean0.toFixed(2)}</div></div>
+      <div class="vh"><div class="k">Now</div><div class="v" style="color:${stanceColor(d.meanN)}">${d.meanN.toFixed(2)}</div><div class="d">${arrow}</div></div>
+    </div>
+    ${d.hurt?`<div class="risk"><span class="tag">STRUCTURAL RISK</span><br>${esc(d.hurt)}</div>`:''}
+    <div style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin-bottom:8px">Grown from these real posts</div>
+    ${d.posts.map(p=>`<div class="ev" style="margin-bottom:8px"><div class="who"><b>@${esc(p.author)}</b><span class="chip">${esc(p.platform)}</span></div>“${esc(p.text)}”</div>`).join('')||'<div class="ev sys">no linked posts</div>'}
+    <div class="foot"><button class="btn primary" data-close>Close</button></div>`;
+  $('verdictModal').classList.add('open');
+}
+Object.assign(window,{cohortDive});
+
+/* ═══ shareable verdict card (canvas → PNG download, zero deps) ═══ */
+function exportVerdictCard(t,run){
+  const cv=document.createElement('canvas');cv.width=1000;cv.height=560;
+  const x=cv.getContext('2d'),pct=n=>Math.round(n/t.n*100);
+  x.fillStyle='#0d0d0d';x.fillRect(0,0,1000,560);
+  x.fillStyle='#3987e5';x.fillRect(0,0,1000,6);
+  x.fillStyle='#fff';x.font='700 22px system-ui';x.fillText('AGORA · CONSEQUENCE VERDICT',40,60);
+  x.fillStyle='#c3c2b7';x.font='16px system-ui';
+  const title=(H.decision||DECISIONS[S.decisionIdx]).title;
+  x.fillText(title.slice(0,80),40,95);
+  x.font='12px system-ui';x.fillStyle='#898781';
+  x.fillText(`${run.n} personas grown from real social posts · ${run.rounds} rounds · round ${run.round}`,40,120);
+  const bands=[['SUPPORT',t.sup,'#3987e5'],['NEUTRAL',t.neu,'#55544e'],['OPPOSE',t.opp,'#e66767']];
+  let bx=40;
+  bands.forEach(([lab,n,col])=>{
+    const w=(n/t.n)*920;
+    x.fillStyle=col;x.fillRect(bx,160,Math.max(2,w-4),46);
+    bx+=w;
+  });
+  bx=40;
+  bands.forEach(([lab,n,col])=>{
+    const w=(n/t.n)*920;
+    x.fillStyle='#fff';x.font='700 15px system-ui';
+    if(w>90)x.fillText(`${lab} ${pct(n)}%`,bx+10,189);
+    bx+=w;
+  });
+  const conf=document.getElementById('confBand')?.textContent||'';
+  x.fillStyle='#c3c2b7';x.font='14px system-ui';x.fillText(conf,40,245);
+  const risk=document.querySelector('#verdictBody .risk');
+  if(risk){x.fillStyle='#f2a1a1';x.font='700 13px system-ui';x.fillText('BIGGEST RISK',40,295);
+    x.fillStyle='#c3c2b7';x.font='14px system-ui';
+    const words=risk.innerText.replace(/\n+/g,' ').replace('BIGGEST RISK','').trim().split(' ');
+    let line='',ly=320;
+    for(const w of words){if(x.measureText(line+' '+w).width>900){x.fillText(line,40,ly);ly+=22;line=w;if(ly>430)break}else line=line?line+' '+w:w}
+    if(ly<=430)x.fillText(line,40,ly);}
+  x.fillStyle='#898781';x.font='13px system-ui';
+  x.fillText('replay live: '+location.origin+location.pathname+'#run='+run._id,40,505);
+  x.fillStyle='#3987e5';x.fillText('github.com/ayushap18/agora · convex durable simulation',40,530);
+  const a=document.createElement('a');
+  a.download='agora-verdict.png';a.href=cv.toDataURL('image/png');a.click();
+}
+
+/* ═══ decision monitoring: toggle + drift chart ═══ */
+(function(){
+  const card=document.querySelector('#harness .side-col .card:last-child');
+  const b=el('button','btn','🛰 Monitor daily');b.id='monitorBtn';
+  card.insertBefore(b,card.querySelector('span'));
+  b.onclick=async()=>{
+    if(!H.decisionDocId){cToast('distill first');return}
+    const q=document.querySelector('input[data-plat="hn"]')?.value.trim()||'';
+    const cur=await client.query(api.serve.decision,{decisionId:H.decisionDocId});
+    const on=!(cur&&cur.monitor);
+    await client.mutation(api.monitor.setMonitor,{decisionId:H.decisionDocId,on,query:q||undefined});
+    b.textContent=on?'🛰 Monitoring ✓ (daily 06:00 UTC)':'🛰 Monitor daily';
+  };
+})();
+client.onUpdate(api.monitor.list,{},async ds=>{
+  let card=document.getElementById('driftCard');
+  if(!ds.length){if(card)card.remove();return}
+  if(!card){card=el('div','card runs-card');card.id='driftCard';
+    card.innerHTML='<div class="card-h">Decision monitoring · projected reception over time</div><div id="driftRows"></div>';
+    $('dash').append(card)}
+  const box=document.getElementById('driftRows');box.innerHTML='';
+  for(const d of ds){
+    const s2=await client.query(api.monitor.series,{decisionId:d._id}).catch(()=>[]);
+    const pts=s2.map((p,i)=>`${8+(i/(Math.max(1,s2.length-1)))*140},${34-(p.pct/100)*28}`).join(' ');
+    box.append(el('div','run-row',
+      `<span class="t"><b>${esc(d.title)}</b>${s2.length} runs · latest ${s2.length?s2[s2.length-1].pct+'%':'—'}</span>
+       <svg width="156" height="38" style="grid-column:span 2"><polyline points="${pts}" fill="none" stroke="var(--sup)" stroke-width="2"/>
+         ${s2.map((p,i)=>`<circle cx="${8+(i/(Math.max(1,s2.length-1)))*140}" cy="${34-(p.pct/100)*28}" r="2.5" fill="var(--sup)"/>`).join('')}</svg>
+       <span class="chip">daily 06:00</span>`));
+  }
 });

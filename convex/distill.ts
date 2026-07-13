@@ -159,6 +159,20 @@ Return JSON: {"cohorts":[...]}`);
       });
     }
 
+    // representativeness: is the corpus itself skewed? (meta-honesty)
+    const byPlat: Record<string, number> = {};
+    posts.forEach((p) => { byPlat[p.platform] = (byPlat[p.platform] ?? 0) + 1; });
+    const domPlat = Object.entries(byPlat).sort((a, b) => b[1] - a[1])[0];
+    const thin = cohorts.filter((c) => c.postIds.length < 5).map((c) => c.name);
+    const warns: string[] = [];
+    if (domPlat && domPlat[1] / posts.length > 0.7)
+      warns.push(`${Math.round((domPlat[1] / posts.length) * 100)}% of the corpus is ${domPlat[0]} — one platform's voice dominates`);
+    if (thin.length) warns.push(`thin evidence for: ${thin.join(", ")} (<5 real posts each)`);
+    const skew = warns.length ? warns.join(". ") : undefined;
+    if (skew) await ctx.runMutation(internal.pipeline.log, {
+      layer: "L1", status: "done", progress: 1, detail: `⚠ corpus skew: ${skew.slice(0, 120)}`,
+    });
+    await ctx.runMutation(internal.distill.setSkew, { decisionId, skew });
     await ctx.runMutation(internal.distill.writeCohorts, { decisionId, cohorts, postAssign: postAssign.slice(0, 380) });
     await ctx.scheduler.runAfter(0, internal.embed.corpus, {});
     return { cohortCount: cohorts.length };
@@ -168,4 +182,9 @@ Return JSON: {"cohorts":[...]}`);
 export const getDecision = internalQuery({
   args: { decisionId: v.id("decisions") },
   handler: async (ctx, { decisionId }) => (await ctx.db.get(decisionId))!,
+});
+
+export const setSkew = internalMutation({
+  args: { decisionId: v.id("decisions"), skew: v.optional(v.string()) },
+  handler: async (ctx, { decisionId, skew }) => { await ctx.db.patch(decisionId, { skew }); },
 });

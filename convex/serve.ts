@@ -197,7 +197,7 @@ export const decision = query({
   args: { decisionId: v.id("decisions") },
   handler: async (ctx, { decisionId }) => {
     const d = await ctx.db.get(decisionId);
-    return d ? { title: d.title, body: d.body, amendments: d.amendments } : null;
+    return d ? { title: d.title, body: d.body, amendments: d.amendments, skew: d.skew ?? null, monitor: d.monitor ?? false } : null;
   },
 });
 
@@ -222,5 +222,37 @@ export const confidence = query({
       lo: pcts.length ? Math.min(...pcts) : null,
       hi: pcts.length ? Math.max(...pcts) : null,
       mean: pcts.length ? Math.round(pcts.reduce((a, b) => a + b, 0) / pcts.length) : null };
+  },
+});
+
+// cohort deep-dive: its real posts + round0 vs now stance
+export const cohortDive = query({
+  args: { runId: v.id("runs"), ci: v.number() },
+  handler: async (ctx, { runId, ci }) => {
+    const run = await ctx.db.get(runId);
+    if (!run) return null;
+    const cohorts = await ctx.db.query("cohorts")
+      .withIndex("by_decision", (q) => q.eq("decisionId", run.decisionId)).collect();
+    cohorts.sort((a, b) => a.idx - b.idx);
+    const c = cohorts[ci];
+    if (!c) return null;
+    const posts = [];
+    for (const id of c.postIds.slice(0, 5)) {
+      const p = await ctx.db.get(id);
+      if (p) posts.push({ text: p.text.slice(0, 180), platform: p.platform, author: p.author, url: p.url ?? null });
+    }
+    // mean stance now vs round 0
+    const pcs = await ctx.db.query("personaChunks").withIndex("by_run", (q) => q.eq("runId", runId)).collect();
+    pcs.sort((a, b) => a.chunkIdx - b.chunkIdx);
+    const cidx = pcs.flatMap((x) => x.cohortIdx);
+    const mean = (vals: number[]) => {
+      let s = 0, n = 0;
+      vals.forEach((v2, i) => { if (cidx[i] === ci) { s += v2; n++; } });
+      return n ? s / n : 0;
+    };
+    const s0 = await stancesAt(ctx, runId, 0);
+    const sN = await stancesAt(ctx, runId, run.round);
+    return { name: c.name, tags: c.tags, hurt: c.hurt ?? null, share: c.share,
+      n: cidx.filter((x) => x === ci).length, mean0: mean(s0), meanN: mean(sN), posts };
   },
 });

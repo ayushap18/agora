@@ -92,7 +92,7 @@ export const tickRound = internalMutation({
           const c = cohorts[f.ci];
           return {
             name: (f.side === "opp" ? c?.facOpp : c?.facSup) || c?.name || "Faction",
-            n: f.n, side: f.side, arg: c?.tags[0] ?? "—",
+            n: f.n, side: f.side, arg: c?.tags[0] ?? "—", ci: f.ci,
           };
         });
       await ctx.db.insert("factions", { runId, round, list });

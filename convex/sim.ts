@@ -1,6 +1,6 @@
 import { WorkflowManager } from "@convex-dev/workflow";
 import { components, internal } from "./_generated/api";
-import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
+import { action, internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
 export const workflow = new WorkflowManager(components.workflow);
@@ -59,13 +59,14 @@ export const start = mutation({
 
 // Fork: fx computed over REAL distilled cohorts by amendment shape
 async function doFork(ctx: any, runId: any, label: string, mode: string, silent: boolean,
-  opts: { seedOffset?: number; fullRounds?: boolean } = {}) {
+  opts: { seedOffset?: number; fullRounds?: boolean; fx?: Record<string, number> } = {}) {
     const run = (await ctx.db.get(runId))!;
     const cohorts = await ctx.db.query("cohorts")
       .withIndex("by_decision", (q: any) => q.eq("decisionId", run.decisionId)).collect();
     cohorts.sort((a, b) => a.baseStance - b.baseStance); // most opposed first
-    const fx: Record<string, number> = {};
-    if (mode === "grandfather") {
+    const fx: Record<string, number> = opts.fx ?? {};
+    if (opts.fx) { /* explicit fx wins (LLM-computed amendments) */ }
+    else if (mode === "grandfather") {
       // full carve-out for the most opposed cohort, partial for the next
       if (cohorts[0]) fx[cohorts[0].name] = 0.95;
       if (cohorts[1]) fx[cohorts[1].name] = 0.3;
@@ -104,9 +105,23 @@ async function doFork(ctx: any, runId: any, label: string, mode: string, silent:
 }
 
 export const fork = mutation({
-  args: { runId: v.id("runs"), label: v.string(), mode: v.string() },
-  handler: async (ctx, { runId, label, mode }) =>
-    await doFork(ctx, runId, label, mode, false),
+  args: {
+    runId: v.id("runs"), label: v.string(), mode: v.string(),
+    fx: v.optional(v.record(v.string(), v.number())),
+  },
+  handler: async (ctx, { runId, label, mode, fx }) =>
+    await doFork(ctx, runId, label, mode, false, { fx }),
+});
+
+export const forkContext = internalQuery({
+  args: { runId: v.id("runs") },
+  handler: async (ctx, { runId }) => {
+    const run = (await ctx.db.get(runId))!;
+    const d = (await ctx.db.get(run.decisionId))!;
+    const cohorts = await ctx.db.query("cohorts")
+      .withIndex("by_decision", (q: any) => q.eq("decisionId", run.decisionId)).collect();
+    return { title: d.title, cohorts: cohorts.map((c) => ({ name: c.name, share: c.share, baseStance: c.baseStance })) };
+  },
 });
 
 // Counterfactual flip estimates: 4 silent runs (control + 3 amendment shapes),
@@ -158,4 +173,10 @@ export async function cascadeDelete(ctx: any, runId: any) {
 export const deleteRunCascade = internalMutation({
   args: { runId: v.id("runs") },
   handler: async (ctx, { runId }) => { await cascadeDelete(ctx, runId); },
+});
+
+export const customForkPublic = action({
+  args: { runId: v.id("runs"), label: v.string() },
+  handler: async (ctx, { runId, label }): Promise<any> =>
+    await ctx.runAction(internal.voices.customFork, { runId, label }),
 });

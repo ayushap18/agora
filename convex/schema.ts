@@ -6,6 +6,9 @@ export default defineSchema({
     title: v.string(),
     body: v.string(),
     status: v.string(),
+    monitor: v.optional(v.boolean()),
+    query: v.optional(v.string()),
+    skew: v.optional(v.string()),
     amendments: v.array(
       v.object({ label: v.string(), detail: v.string(), fx: v.record(v.string(), v.number()) })
     ),
@@ -112,7 +115,7 @@ export default defineSchema({
     runId: v.id("runs"),
     round: v.number(),
     list: v.array(
-      v.object({ name: v.string(), n: v.number(), side: v.string(), arg: v.string() })
+      v.object({ name: v.string(), n: v.number(), side: v.string(), arg: v.string(), ci: v.optional(v.number()) })
     ),
   }).index("by_run", ["runId", "round"]),
   events: defineTable({
@@ -120,6 +123,14 @@ export default defineSchema({
     round: v.number(),
     kind: v.string(),
     payload: v.any(),
+  }).index("by_run", ["runId"]),
+  presence: defineTable({
+    runId: v.id("runs"),
+    clientId: v.string(),
+    name: v.string(),
+    x: v.number(),
+    y: v.number(),
+    ts: v.number(),
   }).index("by_run", ["runId"]),
   calibrations: defineTable({
     runId: v.id("runs"),

@@ -1,6 +1,6 @@
 import { Workpool } from "@convex-dev/workpool";
 import { RateLimiter, MINUTE } from "@convex-dev/rate-limiter";
-import { components, internal } from "./_generated/api";
+import { api, components, internal } from "./_generated/api";
 import { internalAction, internalMutation, internalQuery } from "./_generated/server";
 import { v } from "convex/values";
 import { llmJson, getCfg } from "./llm";
@@ -223,5 +223,38 @@ export const postText = internalQuery({
   handler: async (ctx, { postId }) => {
     const p = await ctx.db.get(postId);
     return p ? { text: p.text.slice(0, 260), url: p.url ?? null } : null;
+  },
+});
+
+// LLM-computed custom amendment: the model decides which cohorts move and how much
+export const customAmendment = internalAction({
+  args: { runId: v.id("runs"), label: v.string() },
+  handler: async (ctx, { runId, label }): Promise<Record<string, number> | null> => {
+    const c: any = await ctx.runQuery(internal.sim.forkContext, { runId });
+    const g = await llmJson(ctx,
+`Decision under debate: "${c.title}". Proposed amendment: "${label}".
+Cohorts (name, population share, base stance -1..1):
+${c.cohorts.map((x: any) => `- ${x.name}: ${(x.share * 100).toFixed(0)}%, ${x.baseStance.toFixed(2)}`).join("\n")}
+For each cohort this amendment would sway, give a stance shift in [-1, 1]
+(positive = toward support). Omit unaffected cohorts. Be selective and realistic.
+Return JSON: {"fx": {"<cohort name>": <shift>, ...}}`);
+    if (!g?.fx || typeof g.fx !== "object") return null;
+    const fx: Record<string, number> = {};
+    for (const [k, v2] of Object.entries(g.fx)) {
+      const num = Number(v2);
+      if (c.cohorts.some((x: any) => x.name === k) && Number.isFinite(num))
+        fx[k] = Math.max(-1, Math.min(1, num));
+    }
+    return Object.keys(fx).length ? fx : null;
+  },
+});
+
+export const customFork = internalAction({
+  args: { runId: v.id("runs"), label: v.string() },
+  handler: async (ctx, { runId, label }) => {
+    const fx = await ctx.runAction(internal.voices.customAmendment, { runId, label });
+    // fx null → sim.fork's heuristic 'custom' mode takes over
+    await ctx.runMutation(api.sim.fork, { runId, label, mode: "custom", fx: fx ?? undefined });
+    return { llm: !!fx, fx };
   },
 });
